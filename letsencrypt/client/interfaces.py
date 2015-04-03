@@ -222,8 +222,8 @@ class IInstaller(zope.interface.Interface):
 class IDisplay(zope.interface.Interface):
     """Generic display."""
 
-    def notification(message, height, pause):
-        """Displays a string message
+    def notification(message, height=10, pause=True):
+        """Displays a string message.
 
         :param str message: Message to display
         :param int height: Height of dialog box if applicable

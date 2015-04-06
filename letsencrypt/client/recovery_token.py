@@ -8,13 +8,15 @@ from letsencrypt.acme import challenges
 
 from letsencrypt.client import le_util
 from letsencrypt.client import interfaces
-from letsencrypt.client import display
+from letsencrypt.client.display import util as display_util
 
 
 class RecoveryToken(object):
     """Recovery Token Identifier Validation Challenge.
 
     Based on draft-barnes-acme, section 6.4.
+
+    ..todo:: This should be rewritten once certificate database is created.
 
     """
     def __init__(self, server, direc):
@@ -27,7 +29,7 @@ class RecoveryToken(object):
         :type chall: :class:`letsencrypt.client.achallenges.RecoveryToken`
 
         :returns: response
-        :rtype: dict
+        :rtype: :class:`letsencrypt.acme.challenges.RecoveryTokenResponse`
 
         """
         token_fp = os.path.join(self.token_dir, chall.domain)
@@ -37,13 +39,25 @@ class RecoveryToken(object):
 
         code, token = zope.component.getUtility(
             interfaces.IDisplay).input(
-                "%s - Input Recovery Token: " % chall.domain)
-        if code != display.CANCEL:
+                "Recovery Token for identifier: %s " % chall.domain)
+        if code != display_util.CANCEL:
             return challenges.RecoveryTokenResponse(token=token)
 
         return None
 
-    def cleanup(self, chall):
+    def cleanup(self, achall):
+        """Cleanup temporary state from challenge.
+
+        Cleanup is not currently necessary.
+        .. note:: Should not delete a recovery token until a new one is issued.
+
+        :param chall: Recovery Token Challenge
+        :type chall: :class:`letsencrypt.client.achallenges.RecoveryToken`
+
+        """
+        pass
+
+    def remove_token(self, achall):
         """Cleanup the saved recovery token if it exists.
 
         :param chall: Recovery Token Challenge
@@ -51,7 +65,7 @@ class RecoveryToken(object):
 
         """
         try:
-            le_util.safely_remove(os.path.join(self.token_dir, chall.domain))
+            le_util.safely_remove(os.path.join(self.token_dir, achall.domain))
         except OSError as err:
             if err.errno != errno.ENOENT:
                 raise

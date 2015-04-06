@@ -9,6 +9,7 @@ import mock
 from letsencrypt.acme import challenges
 
 from letsencrypt.client import achallenges
+from letsencrypt.client.display import util as display_util
 
 
 class RecoveryTokenTest(unittest.TestCase):
@@ -34,21 +35,21 @@ class RecoveryTokenTest(unittest.TestCase):
         self.assertFalse(self.rec_token.requires_human("example2.com"))
         self.assertTrue(self.rec_token.requires_human("example3.com"))
 
-    def test_cleanup(self):
+    def test_remove_token(self):
         self.rec_token.store_token("example3.com", 333)
         self.assertFalse(self.rec_token.requires_human("example3.com"))
 
-        self.rec_token.cleanup(achallenges.RecoveryToken(
+        self.rec_token.remove_token(achallenges.RecoveryToken(
             chall=None, domain="example3.com"))
         self.assertTrue(self.rec_token.requires_human("example3.com"))
 
         # Shouldn't throw an error
-        self.rec_token.cleanup(achallenges.RecoveryToken(
+        self.rec_token.remove_token(achallenges.RecoveryToken(
             chall=None, domain="example4.com"))
 
         # SHOULD throw an error (OSError other than nonexistent file)
         self.assertRaises(
-            OSError, self.rec_token.cleanup,
+            OSError, self.rec_token.remove_token,
             achallenges.RecoveryToken(chall=None, domain="a"+"r"*10000+".com"))
 
     def test_perform_stored(self):
@@ -61,7 +62,9 @@ class RecoveryTokenTest(unittest.TestCase):
 
     @mock.patch("letsencrypt.client.recovery_token.zope.component.getUtility")
     def test_perform_not_stored(self, mock_input):
-        mock_input().input.side_effect = [(0, "555"), (1, "000")]
+        mock_input().input.side_effect = [
+            (display_util.OK, "555"), (display_util.CANCEL, "cancel")
+        ]
         response = self.rec_token.perform(
             achallenges.RecoveryToken(chall=None, domain="example5.com"))
         self.assertEqual(

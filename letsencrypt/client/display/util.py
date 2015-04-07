@@ -33,21 +33,19 @@ class NcursesDisplay(object):
         self.width = width
         self.height = height
 
-    def notification(self, message, height=10, pause=False):
+    def notification(self, message, height=10, pause=True):
         # pylint: disable=unused-argument
         """Display a notification to the user and wait for user acceptance.
 
-        .. todo:: It probably makes sense to use one of the transient message
-            types for pause. It isn't straightforward how best to approach
-            the matter though given the context of our messages.
-            http://pythondialog.sourceforge.net/doc/widgets.html#displaying-transient-messages
-
         :param str message: Message to display
         :param int height: Height of the dialog box
-        :param bool pause: Not applicable to NcursesDisplay
+        :param bool pause: Do not wait for acceptance
 
         """
-        self.dialog.msgbox(message, height, width=self.width)
+        if pause:
+            self.dialog.msgbox(message, height=height, width=self.width)
+        else:
+            self.dialog.infobox(message, height=height, width=self.width)
 
     def menu(self, message, choices,
              ok_label="OK", cancel_label="Cancel", help_label=""):
@@ -155,13 +153,16 @@ class FileDisplay(object):
 
     zope.interface.implements(interfaces.IDisplay)
 
+    frame = ("-" * 79) + os.linesep
+
     def __init__(self, outfile):
         super(FileDisplay, self).__init__()
         self.outfile = outfile
+        self.pb = False
 
     def notification(self, message, height=10, pause=True):
         # pylint: disable=unused-argument
-        """Displays a notification and waits for user acceptance.
+        """Displays a notification.
 
         :param str message: Message to display
         :param int height: No effect for FileDisplay
@@ -169,11 +170,10 @@ class FileDisplay(object):
             user's confirmation
 
         """
-        side_frame = "-" * 79
         message = self._wrap_lines(message)
         self.outfile.write(
-            "{line}{frame}{line}{msg}{line}{frame}{line}".format(
-                line=os.linesep, frame=side_frame, msg=message))
+            "{line}{frame}{msg}{line}{frame}".format(
+                line=os.linesep, frame=self.frame, msg=message))
         if pause:
             raw_input("Press Enter to Continue")
 
@@ -236,12 +236,10 @@ class FileDisplay(object):
         :rtype: bool
 
         """
-        side_frame = ("-" * 79) + os.linesep
-
         message = self._wrap_lines(message)
 
         self.outfile.write("{0}{frame}{msg}{0}{frame}".format(
-            os.linesep, frame=side_frame, msg=message))
+            os.linesep, frame=self.frame, msg=message))
 
         while True:
             ans = raw_input("{yes}/{no}: ".format(
@@ -328,9 +326,8 @@ class FileDisplay(object):
 
         # Write out the message to the user
         self.outfile.write(
-            "{new}{msg}{new}".format(new=os.linesep, msg=message))
-        side_frame = ("-" * 79) + os.linesep
-        self.outfile.write(side_frame)
+            "{line}{msg}{line}{frame}".format(
+                line=os.linesep, msg=message, frame=self.frame))
 
         # Write out the menu choices
         for i, desc in enumerate(choices, 1):
@@ -340,7 +337,7 @@ class FileDisplay(object):
             # Keep this outside of the textwrap
             self.outfile.write(os.linesep)
 
-        self.outfile.write(side_frame)
+        self.outfile.write(self.frame)
 
     def _wrap_lines(self, msg):  # pylint: disable=no-self-use
         """Format lines nicely to 80 chars.

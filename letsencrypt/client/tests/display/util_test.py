@@ -1,5 +1,6 @@
 """Test :mod:`letsencrypt.client.display.util`."""
 import os
+import time
 import unittest
 
 import mock
@@ -26,7 +27,8 @@ def visual(displayer, choices):
     displayer.input("Input Message")
     displayer.yesno("YesNo Message", yes_label="Yessir", no_label="Nosir")
     displayer.checklist("Checklist Message", [choice[0] for choice in choices])
-
+    # This should go last because it doesn't block...
+    displayer.notification("Here is some info", pause=False)
 
 class NcursesDisplayTest(DisplayT):
     """Test ncurses display.
@@ -54,10 +56,15 @@ class NcursesDisplayTest(DisplayT):
         }
 
     @mock.patch("letsencrypt.client.display.util.dialog.Dialog.msgbox")
-    def test_notification(self, mock_msgbox):
+    def test_notification_pause(self, mock_msgbox):
         """Kind of worthless... one liner."""
         self.displayer.notification("message")
         self.assertEqual(mock_msgbox.call_count, 1)
+
+    @mock.patch("letsencrypt.client.display.util.dialog.Dialog.infobox")
+    def test_notification_no_pause(self, mock_infobox):
+        self.displayer.notification("message", pause=False)
+        self.assertEqual(mock_infobox.call_count, 1)
 
     @mock.patch("letsencrypt.client.display.util.dialog.Dialog.menu")
     def test_menu_tag_and_desc(self, mock_menu):

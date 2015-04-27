@@ -1,9 +1,12 @@
 """Tests for letsencrypt.acme.messages2."""
 import datetime
+import os
+import pkg_resources
 import unittest
 
 import mock
 import pytz
+from Crypto.PublicKey import RSA
 
 from letsencrypt.acme import challenges
 from letsencrypt.acme import jose
@@ -19,9 +22,9 @@ class ErrorTest(unittest.TestCase):
     def test_typ_prefix(self):
         self.assertEqual('malformed', self.error.typ)
         self.assertEqual(
-            'urn:acme:error:malformed', self.error.to_json()['type'])
+            'urn:acme:error:malformed', self.error.to_partial_json()['type'])
         self.assertEqual(
-            'malformed', self.error.from_json(self.error.to_json()).typ)
+            'malformed', self.error.from_json(self.error.to_partial_json()).typ)
 
     def test_typ_decoder_missing_prefix(self):
         from letsencrypt.acme.messages2 import Error
@@ -39,6 +42,10 @@ class ErrorTest(unittest.TestCase):
         self.assertEqual(
             'The request message was malformed', self.error.description)
 
+    def test_from_json_hashable(self):
+        from letsencrypt.acme.messages2 import Error
+        hash(Error.from_json(self.error.to_json()))
+
 
 class ConstantTest(unittest.TestCase):
     """Tests for letsencrypt.acme.messages2._Constant."""
@@ -52,18 +59,66 @@ class ConstantTest(unittest.TestCase):
         self.const_a = MockConstant('a')
         self.const_b = MockConstant('b')
 
-    def test_to_json(self):
-        self.assertEqual('a', self.const_a.to_json())
-        self.assertEqual('b', self.const_b.to_json())
+    def test_to_partial_json(self):
+        self.assertEqual('a', self.const_a.to_partial_json())
+        self.assertEqual('b', self.const_b.to_partial_json())
 
     def test_from_json(self):
         self.assertEqual(self.const_a, self.MockConstant.from_json('a'))
         self.assertRaises(
             jose.DeserializationError, self.MockConstant.from_json, 'c')
 
+    def test_from_json_hashable(self):
+        hash(self.MockConstant.from_json('a'))
+
     def test_repr(self):
         self.assertEqual('MockConstant(a)', repr(self.const_a))
         self.assertEqual('MockConstant(b)', repr(self.const_b))
+
+    def test_equality(self):
+        const_a_prime = self.MockConstant('a')
+        self.assertFalse(self.const_a == self.const_b)
+        self.assertTrue(self.const_a == const_a_prime)
+
+        self.assertTrue(self.const_a != self.const_b)
+        self.assertFalse(self.const_a != const_a_prime)
+
+class RegistrationTest(unittest.TestCase):
+    """Tests for letsencrypt.acme.messages2.Registration."""
+
+    def setUp(self):
+        key = jose.jwk.JWKRSA(key=jose.util.HashableRSAKey(
+            RSA.importKey(pkg_resources.resource_string(
+                'letsencrypt.client.tests', os.path.join(
+                    'testdata', 'rsa256_key.pem'))).publickey()))
+        contact = ('mailto:letsencrypt-client@letsencrypt.org',)
+        recovery_token = 'XYZ'
+        agreement = 'https://letsencrypt.org/terms'
+
+        from letsencrypt.acme.messages2 import Registration
+        self.reg = Registration(
+            key=key, contact=contact, recovery_token=recovery_token,
+            agreement=agreement)
+
+        self.jobj_to = {
+            'contact': contact,
+            'recoveryToken': recovery_token,
+            'agreement': agreement,
+            'key': key,
+        }
+        self.jobj_from = self.jobj_to.copy()
+        self.jobj_from['key'] = key.to_json()
+
+    def test_to_partial_json(self):
+        self.assertEqual(self.jobj_to, self.reg.to_partial_json())
+
+    def test_from_json(self):
+        from letsencrypt.acme.messages2 import Registration
+        self.assertEqual(self.reg, Registration.from_json(self.jobj_from))
+
+    def test_from_json_hashable(self):
+        from letsencrypt.acme.messages2 import Registration
+        hash(Registration.from_json(self.jobj_from))
 
 
 class ChallengeResourceTest(unittest.TestCase):
@@ -96,12 +151,16 @@ class ChallengeBodyTest(unittest.TestCase):
         self.jobj_from = self.jobj_to.copy()
         self.jobj_from['status'] = 'valid'
 
-    def test_to_json(self):
-        self.assertEqual(self.jobj_to, self.challb.to_json())
+    def test_to_partial_json(self):
+        self.assertEqual(self.jobj_to, self.challb.to_partial_json())
 
-    def test_fields_from_json(self):
+    def test_from_json(self):
         from letsencrypt.acme.messages2 import ChallengeBody
         self.assertEqual(self.challb, ChallengeBody.from_json(self.jobj_from))
+
+    def test_from_json_hashable(self):
+        from letsencrypt.acme.messages2 import ChallengeBody
+        hash(ChallengeBody.from_json(self.jobj_from))
 
 
 class AuthorizationTest(unittest.TestCase):
@@ -130,14 +189,18 @@ class AuthorizationTest(unittest.TestCase):
             challenges=self.challbs)
 
         self.jobj_from = {
-            'identifier': identifier.fully_serialize(),
-            'challenges': [challb.fully_serialize() for challb in self.challbs],
+            'identifier': identifier.to_json(),
+            'challenges': [challb.to_json() for challb in self.challbs],
             'combinations': combinations,
         }
 
     def test_from_json(self):
         from letsencrypt.acme.messages2 import Authorization
         Authorization.from_json(self.jobj_from)
+
+    def test_from_json_hashable(self):
+        from letsencrypt.acme.messages2 import Authorization
+        hash(Authorization.from_json(self.jobj_from))
 
     def test_resolved_combinations(self):
         self.assertEqual(self.authz.resolved_combinations, (
@@ -164,8 +227,12 @@ class RevocationTest(unittest.TestCase):
         self.assertEqual(self.rev_date, Revocation.from_json(self.jobj_date))
 
     def test_revoke_encoder(self):
-        self.assertEqual(self.jobj_now, self.rev_now.to_json())
-        self.assertEqual(self.jobj_date, self.rev_date.to_json())
+        self.assertEqual(self.jobj_now, self.rev_now.to_partial_json())
+        self.assertEqual(self.jobj_date, self.rev_date.to_partial_json())
+
+    def test_from_json_hashable(self):
+        from letsencrypt.acme.messages2 import Revocation
+        hash(Revocation.from_json(self.rev_now.to_json()))
 
 
 if __name__ == '__main__':

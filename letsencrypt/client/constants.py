@@ -40,6 +40,12 @@ APACHE_REWRITE_HTTPS_ARGS = [
 """Apache rewrite rule arguments used for redirections to https vhost"""
 
 
+NGINX_MOD_SSL_CONF = pkg_resources.resource_filename(
+    "letsencrypt.client.plugins.nginx", "options-ssl.conf")
+"""Path to the Nginx mod_ssl config file found in the Let's Encrypt
+distribution."""
+
+
 DVSNI_CHALLENGE_PORT = 443
 """Port to perform DVSNI challenge."""
 
@@ -54,6 +60,12 @@ IConfig.work_dir)."""
 CERT_KEY_BACKUP_DIR = "keys-certs"
 """Directory where all certificates and keys are stored (relative to
 IConfig.work_dir. Used for easy revocation."""
+
+ACCOUNTS_DIR = "accounts"
+"""Directory where all accounts are saved."""
+
+ACCOUNT_KEYS_DIR = "keys"
+"""Directory where account keys are saved. Relative to ACCOUNTS_DIR."""
 
 REC_TOKEN_DIR = "recovery_tokens"
 """Directory where all recovery tokens are saved (relative to

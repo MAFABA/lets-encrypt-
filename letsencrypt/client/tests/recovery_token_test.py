@@ -9,7 +9,6 @@ import mock
 from letsencrypt.acme import challenges
 
 from letsencrypt.client import achallenges
-from letsencrypt.client.display import util as display_util
 
 
 class RecoveryTokenTest(unittest.TestCase):
@@ -35,27 +34,28 @@ class RecoveryTokenTest(unittest.TestCase):
         self.assertFalse(self.rec_token.requires_human("example2.com"))
         self.assertTrue(self.rec_token.requires_human("example3.com"))
 
-    def test_remove_token(self):
+    def test_cleanup(self):
         self.rec_token.store_token("example3.com", 333)
         self.assertFalse(self.rec_token.requires_human("example3.com"))
 
-        self.rec_token.remove_token(achallenges.RecoveryToken(
-            chall=None, domain="example3.com"))
+        self.rec_token.cleanup(achallenges.RecoveryToken(
+            challb=challenges.RecoveryToken(), domain="example3.com"))
         self.assertTrue(self.rec_token.requires_human("example3.com"))
 
         # Shouldn't throw an error
-        self.rec_token.remove_token(achallenges.RecoveryToken(
-            chall=None, domain="example4.com"))
+        self.rec_token.cleanup(achallenges.RecoveryToken(
+            challb=None, domain="example4.com"))
 
         # SHOULD throw an error (OSError other than nonexistent file)
         self.assertRaises(
-            OSError, self.rec_token.remove_token,
-            achallenges.RecoveryToken(chall=None, domain="a"+"r"*10000+".com"))
+            OSError, self.rec_token.cleanup,
+            achallenges.RecoveryToken(challb=None, domain="a"+"r"*10000+".com"))
 
     def test_perform_stored(self):
         self.rec_token.store_token("example4.com", 444)
         response = self.rec_token.perform(
-            achallenges.RecoveryToken(chall=None, domain="example4.com"))
+            achallenges.RecoveryToken(
+                challb=challenges.RecoveryToken(), domain="example4.com"))
 
         self.assertEqual(
             response, challenges.RecoveryTokenResponse(token="444"))
@@ -66,12 +66,14 @@ class RecoveryTokenTest(unittest.TestCase):
             (display_util.OK, "555"), (display_util.CANCEL, "cancel")
         ]
         response = self.rec_token.perform(
-            achallenges.RecoveryToken(chall=None, domain="example5.com"))
+            achallenges.RecoveryToken(
+                challb=challenges.RecoveryToken(), domain="example5.com"))
         self.assertEqual(
             response, challenges.RecoveryTokenResponse(token="555"))
 
         response = self.rec_token.perform(
-            achallenges.RecoveryToken(chall=None, domain="example6.com"))
+            achallenges.RecoveryToken(
+                challb=challenges.RecoveryToken(), domain="example6.com"))
         self.assertTrue(response is None)
 
 

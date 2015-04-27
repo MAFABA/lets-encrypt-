@@ -113,7 +113,7 @@ class Field(object):
     @classmethod
     def default_encoder(cls, value):
         """Default (passthrough) encoder."""
-        # field.to_json() is no good as encoder has to do partial
+        # field.to_partial_json() is no good as encoder has to do partial
         # serialization only
         return value
 
@@ -189,7 +189,7 @@ class JSONObjectWithFields(util.ImmutableMap, interfaces.JSONDeSerializable):
                   raise errors.DeserializationError('No bar suffix!')
               return value[:-3]
 
-      assert Foo(bar='baz').to_json() == {'Bar': 'bazbar'}
+      assert Foo(bar='baz').to_partial_json() == {'Bar': 'bazbar'}
       assert Foo.from_json({'Bar': 'bazbar'}) == Foo(bar='baz')
       assert (Foo.from_json({'Bar': 'bazbar', 'Empty': '!'})
               == Foo(bar='baz', empty='!'))
@@ -209,14 +209,14 @@ class JSONObjectWithFields(util.ImmutableMap, interfaces.JSONDeSerializable):
         super(JSONObjectWithFields, self).__init__(
             **(dict(self._defaults(), **kwargs)))
 
-    def fields_to_json(self):
+    def fields_to_partial_json(self):
         """Serialize fields to JSON."""
         jobj = {}
         for slot, field in self._fields.iteritems():
             value = getattr(self, slot)
 
             if field.omit(value):
-                logging.debug('Ommiting empty field "%s" (%s)', slot, value)
+                logging.debug('Omitting empty field "%s" (%s)', slot, value)
             else:
                 try:
                     jobj[field.json_name] = field.encode(value)
@@ -226,8 +226,8 @@ class JSONObjectWithFields(util.ImmutableMap, interfaces.JSONDeSerializable):
                             slot, value, error))
         return jobj
 
-    def to_json(self):
-        return self.fields_to_json()
+    def to_partial_json(self):
+        return self.fields_to_partial_json()
 
     @classmethod
     def _check_required(cls, jobj):
@@ -372,22 +372,20 @@ class TypedJSONObjectWithFields(JSONObjectWithFields):
             raise errors.DeserializationError("missing type field")
 
         try:
-            type_cls = cls.TYPES[typ]
+            return cls.TYPES[typ]
         except KeyError:
             raise errors.UnrecognizedTypeError(typ, jobj)
 
-        return type_cls
-
-    def to_json(self):
+    def to_partial_json(self):
         """Get JSON serializable object.
 
         :returns: Serializable JSON object representing ACME typed object.
-            :meth:`validate` will almost certianly not work, due to reasons
+            :meth:`validate` will almost certainly not work, due to reasons
             explained in :class:`letsencrypt.acme.interfaces.IJSONSerializable`.
         :rtype: dict
 
         """
-        jobj = self.fields_to_json()
+        jobj = self.fields_to_partial_json()
         jobj[self.type_field_name] = self.typ
         return jobj
 

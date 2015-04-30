@@ -20,6 +20,7 @@ class PerformTest(unittest.TestCase):
         self.auth.rec_token.perform = mock.MagicMock(
             name="rec_token_perform", side_effect=gen_client_resp)
 
+    @mock.patch("letsencrypt")
     def test_rec_token1(self):
         token = achallenges.RecoveryToken(challb=None, domain="0")
         responses = self.auth.perform([token])
@@ -43,35 +44,8 @@ class PerformTest(unittest.TestCase):
 
     def test_chall_pref(self):
         self.assertEqual(
-            self.auth.get_chall_pref("example.com"), [challenges.RecoveryToken])
-
-
-class CleanupTest(unittest.TestCase):
-    """Test the Authenticator cleanup function."""
-
-    def setUp(self):
-        from letsencrypt.client.continuity_auth import ContinuityAuthenticator
-
-        self.auth = ContinuityAuthenticator(
-            mock.MagicMock(server="demo_server.org"))
-        self.mock_cleanup = mock.MagicMock(name="rec_token_cleanup")
-        self.auth.rec_token.cleanup = self.mock_cleanup
-
-    def test_rec_token2(self):
-        token1 = achallenges.RecoveryToken(challb=None, domain="0")
-        token2 = achallenges.RecoveryToken(challb=None, domain="1")
-
-        self.auth.cleanup([token1, token2])
-
-        self.assertEqual(self.mock_cleanup.call_args_list,
-                         [mock.call(token1), mock.call(token2)])
-
-    def test_unexpected(self):
-        token = achallenges.RecoveryToken(challb=None, domain="0")
-        unexpected = achallenges.DVSNI(challb=None, domain="0", key="dummy_key")
-
-        self.assertRaises(errors.LetsEncryptContAuthError,
-                          self.auth.cleanup, [token, unexpected])
+            self.auth.get_chall_pref("example.com"),
+            [challenges.RecoveryContact, challenges.RecoveryToken])
 
 
 def gen_client_resp(chall):

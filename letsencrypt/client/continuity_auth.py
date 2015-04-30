@@ -34,14 +34,7 @@ class ContinuityAuthenticator(object):
 
     def get_chall_pref(self, domain):
         """Return list of challenge preferences."""
-        avail_chall = [challenges.RecoveryContact]
-
-        if self.rec_token.requires_human(domain):
-            avail_chall.append(challenges.RecoveryToken)
-        else:
-            avail_chall.insert(0, challenges.RecoveryToken)
-
-        return avail_chall
+        return [challenges.RecoveryContact, challenges.RecoveryToken]
 
     def perform(self, achalls):
         """Perform continuity challenges for IAuthenticator.
@@ -67,19 +60,17 @@ class ContinuityAuthenticator(object):
         responses = []
         for achall in achalls:
             if isinstance(achall, achallenges.RecoveryToken):
-                responses.append(self.rec_token.perform(achall))
+                responses.append(recovery_token.perform(achall))
             elif isinstance(achall, achallenges.RecoveryContact):
-                responses.append(self.rec_contact.perform(achall))
+                responses.append(recovery_contact.perform(achall))
             else:
                 raise errors.LetsEncryptContAuthError("Unexpected Challenge")
         return responses
 
     def cleanup(self, achalls):
-        """Cleanup call for IAuthenticator."""
-        for achall in achalls:
-            if isinstance(achall, achallenges.RecoveryToken):
-                self.rec_token.cleanup(achall)
-            elif isinstance(achall, achallenges.RecoveryContact):
-                self.rec_contact.cleanup(achall)
-            else:
-                raise errors.LetsEncryptContAuthError("Unexpected Challenge")
+        """Cleanup call for IAuthenticator.
+
+        The continuity challenges don't have any cleanup requirements.
+
+        """
+        pass

@@ -86,9 +86,7 @@ class Network(object):
                     logging.debug(
                         'Ignoring wrong Content-Type (%r) for JSON Error',
                         response_ct)
-
                 try:
-                    # TODO: This is insufficient or doesn't work as intended.
                     logging.error("Error: %s", jobj)
                     logging.error("Response from server: %s", response.content)
                     raise messages2.Error.from_json(jobj)
@@ -152,7 +150,6 @@ class Network(object):
             response.links['terms-of-service']['url']
             if 'terms-of-service' in response.links else terms_of_service)
 
-        # TODO: Consider removing this check based on spec clarifications #93
         if new_authzr_uri is None:
             try:
                 new_authzr_uri = response.links['next']['url']
@@ -201,13 +198,10 @@ class Network(object):
         """
         details = (
             "mailto:" + account.email if account.email is not None else None,
-            "tel:" + account.phone if account.phone is not None else None
+            "tel:" + account.phone if account.phone is not None else None,
         )
-
-        contact_tuple = tuple(det for det in details if det is not None)
-
-        account.regr = self.register(contact=contact_tuple)
-
+        account.regr = self.register(contact=tuple(
+            det for det in details if det is not None))
         return account
 
     def update_registration(self, regr):
@@ -323,7 +317,7 @@ class Network(object):
         except KeyError:
             # TODO: Right now Boulder responds with the authorization resource
             # instead of a challenge resource... this can be uncommented
-            # once the error is fixed.
+            # once the error is fixed (boulder#130).
             return None
             # raise errors.NetworkError('"up" Link header missing')
         challr = messages2.ChallengeResource(
@@ -331,7 +325,7 @@ class Network(object):
             body=messages2.ChallengeBody.from_json(response.json()))
         # TODO: check that challr.uri == response.headers['Location']?
         if challr.uri != challb.uri:
-            raise errors.UnexpectedUpdate(challb.uri)
+            raise errors.UnexpectedUpdate(challr.uri)
         return challr
 
     @classmethod
@@ -376,7 +370,6 @@ class Network(object):
         updated_authzr = self._authzr_from_response(
             response, authzr.body.identifier, authzr.uri, authzr.new_cert_uri)
         # TODO: check and raise UnexpectedUpdate
-
         return updated_authzr, response
 
     def request_issuance(self, csr, authzrs):
@@ -534,6 +527,8 @@ class Network(object):
         """
         if certr.cert_chain_uri is not None:
             return self._get_cert(certr.cert_chain_uri)[1]
+        else:
+            return None
 
     def revoke(self, certr, when=messages2.Revocation.NOW):
         """Revoke certificate.

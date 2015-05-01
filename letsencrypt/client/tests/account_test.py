@@ -4,15 +4,11 @@ import mock
 import os
 import pkg_resources
 import shutil
-import sys
 import tempfile
 import unittest
 
-import zope.component
-
 from letsencrypt.acme import messages2
 
-from letsencrypt.client import account
 from letsencrypt.client import configuration
 from letsencrypt.client import errors
 from letsencrypt.client import le_util
@@ -24,6 +20,8 @@ class AccountTest(unittest.TestCase):
     """Tests letsencrypt.client.account.Account."""
 
     def setUp(self):
+        from letsencrypt.client.account import Account
+
         logging.disable(logging.CRITICAL)
 
         self.accounts_dir = tempfile.mkdtemp("accounts")
@@ -50,7 +48,7 @@ class AccountTest(unittest.TestCase):
                 recovery_token="recovery_token", agreement="agreement")
         )
 
-        self.test_account = account.Account(
+        self.test_account = Account(
             self.config, self.key, self.email, None, self.regr)
 
     def tearDown(self):
@@ -60,30 +58,58 @@ class AccountTest(unittest.TestCase):
     @mock.patch("letsencrypt.client.account.zope.component.getUtility")
     @mock.patch("letsencrypt.client.account.crypto_util.init_save_key")
     def test_prompts(self, mock_key, mock_util):
-        displayer = display_util.FileDisplay(sys.stdout)
-        zope.component.provideUtility(displayer)
+        from letsencrypt.client.account import Account
 
         mock_util().input.return_value = (display_util.OK, self.email)
-
         mock_key.return_value = self.key
-        acc = account.Account.from_prompts(self.config)
 
+        acc = Account.from_prompts(self.config)
         self.assertEqual(acc.email, self.email)
         self.assertEqual(acc.key, self.key)
         self.assertEqual(acc.config, self.config)
 
     @mock.patch("letsencrypt.client.account.zope.component.getUtility")
+    @mock.patch("letsencrypt.client.account.Account.from_email")
+    def test_prompts_bad_email(self, mock_from_email, mock_util):
+        from letsencrypt.client.account import Account
+
+        mock_from_email.side_effect = (errors.LetsEncryptClientError, "acc")
+        mock_util().input.return_value = (display_util.OK, self.email)
+
+        self.assertEqual(Account.from_prompts(self.config), "acc")
+
+
+    @mock.patch("letsencrypt.client.account.zope.component.getUtility")
+    @mock.patch("letsencrypt.client.account.crypto_util.init_save_key")
+    def test_prompts_empty_email(self, mock_key, mock_util):
+        from letsencrypt.client.account import Account
+
+        mock_util().input.return_value = (display_util.OK, "")
+        acc = Account.from_prompts(self.config)
+        self.assertTrue(acc.email is None)
+        # _get_config_filename | pylint: disable=protected-access
+        mock_key.assert_called_once_with(
+            mock.ANY, mock.ANY, acc._get_config_filename(None))
+
+    @mock.patch("letsencrypt.client.account.zope.component.getUtility")
     def test_prompts_cancel(self, mock_util):
-        # displayer = display_util.FileDisplay(sys.stdout)
-        # zope.component.provideUtility(displayer)
+        from letsencrypt.client.account import Account
 
         mock_util().input.return_value = (display_util.CANCEL, "")
 
-        self.assertTrue(account.Account.from_prompts(self.config) is None)
+        self.assertTrue(Account.from_prompts(self.config) is None)
+
+    def test_from_email(self):
+        from letsencrypt.client.account import Account
+
+        self.assertRaises(errors.LetsEncryptClientError,
+                          Account.from_email, self.config, "not_valid...email")
 
     def test_save_from_existing_account(self):
+        from letsencrypt.client.account import Account
+
         self.test_account.save()
-        acc = account.Account.from_existing_account(self.config, self.email)
+        acc = Account.from_existing_account(self.config, self.email)
 
         self.assertEqual(acc.key, self.test_account.key)
         self.assertEqual(acc.email, self.test_account.email)
@@ -97,31 +123,22 @@ class AccountTest(unittest.TestCase):
         self.assertEqual(self.test_account.recovery_token, "recovery_token")
 
     def test_partial_properties(self):
-        partial = account.Account(self.config, self.key)
-        regr_no_authzr_uri = messages2.RegistrationResource(
-            uri="uri",
-            new_authzr_uri=None,
-            terms_of_service="terms_of_service",
-            body=messages2.Registration(
-                recovery_token="recovery_token", agreement="agreement")
-        )
-        partial2 = account.Account(
-            self.config, self.key, regr=regr_no_authzr_uri)
+        from letsencrypt.client.account import Account
+
+        partial = Account(self.config, self.key)
 
         self.assertTrue(partial.uri is None)
         self.assertTrue(partial.new_authzr_uri is None)
         self.assertTrue(partial.terms_of_service is None)
         self.assertTrue(partial.recovery_token is None)
 
-        self.assertEqual(
-            partial2.new_authzr_uri,
-            "https://letsencrypt-demo.org/acme/new-authz")
-
     def test_partial_account_default(self):
-        partial = account.Account(self.config, self.key)
+        from letsencrypt.client.account import Account
+
+        partial = Account(self.config, self.key)
         partial.save()
 
-        acc = account.Account.from_existing_account(self.config)
+        acc = Account.from_existing_account(self.config)
 
         self.assertEqual(partial.key, acc.key)
         self.assertEqual(partial.email, acc.email)
@@ -129,27 +146,33 @@ class AccountTest(unittest.TestCase):
         self.assertEqual(partial.regr, acc.regr)
 
     def test_get_accounts(self):
-        accs = account.Account.get_accounts(self.config)
+        from letsencrypt.client.account import Account
+
+        accs = Account.get_accounts(self.config)
         self.assertFalse(accs)
 
         self.test_account.save()
-        accs = account.Account.get_accounts(self.config)
+        accs = Account.get_accounts(self.config)
         self.assertEqual(len(accs), 1)
         self.assertEqual(accs[0].email, self.test_account.email)
 
-        acc2 = account.Account(self.config, self.key, "testing_email@gmail.com")
+        acc2 = Account(self.config, self.key, "testing_email@gmail.com")
         acc2.save()
-        accs = account.Account.get_accounts(self.config)
+        accs = Account.get_accounts(self.config)
         self.assertEqual(len(accs), 2)
 
     def test_get_accounts_no_accounts(self):
-        self.assertEqual(account.Account.get_accounts(
+        from letsencrypt.client.account import Account
+
+        self.assertEqual(Account.get_accounts(
             mock.Mock(accounts_dir="non-existant")), [])
 
     def test_failed_existing_account(self):
+        from letsencrypt.client.account import Account
+
         self.assertRaises(
             errors.LetsEncryptClientError,
-            account.Account.from_existing_account,
+            Account.from_existing_account,
             self.config, "non-existant@email.org")
 
 class SafeEmailTest(unittest.TestCase):
@@ -169,7 +192,7 @@ class SafeEmailTest(unittest.TestCase):
         addrs = [
             "letsencrypt@letsencrypt.org",
             "tbd.ade@gmail.com",
-            "abc_def.jdk@hotmail.museum"
+            "abc_def.jdk@hotmail.museum",
         ]
         for addr in addrs:
             self.assertTrue(self._call(addr), "%s failed." % addr)

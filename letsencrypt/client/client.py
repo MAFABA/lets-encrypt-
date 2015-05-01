@@ -1,6 +1,7 @@
 """ACME protocol client class and helper functions."""
 import logging
 import os
+import pkg_resources
 
 import M2Crypto
 import zope.component
@@ -62,8 +63,7 @@ class Client(object):
 
         # TODO: Allow for other alg types besides RS256
         self.network = network2.Network(
-            "https://%s/acme/new-reg" % config.server,
-            jwk.JWKRSA.load(self.account.key.pem))
+            config.server_url, jwk.JWKRSA.load(self.account.key.pem))
 
         self.config = config
 
@@ -79,14 +79,18 @@ class Client(object):
         self.account = self.network.register_from_account(self.account)
         if self.account.terms_of_service:
             if not self.config.tos:
+                # TODO: Replace with self.account.terms_of_service
+                eula = pkg_resources.resource_string("letsencrypt", "EULA")
                 agree = zope.component.getUtility(interfaces.IDisplay).yesno(
-                    self.account.terms_of_service, "Agree", "Cancel")
+                    eula, "Agree", "Cancel")
             else:
                 agree = True
 
             if agree:
                 self.account.regr = self.network.agree_to_tos(self.account.regr)
-                # TODO: Handle case where user doesn't agree
+            else:
+                # What is the proper response here...
+                raise errors.LetsEncryptClientError("Must agree to TOS")
 
         self.account.save()
 
@@ -161,12 +165,13 @@ class Client(object):
         cert_chain_abspath = None
         cert_file, act_cert_path = le_util.unique_file(cert_path, 0o644)
         # TODO: Except
+        cert_pem = certr.body.as_pem()
         try:
-            cert_file.write(certr.body.as_pem())
+            cert_file.write(cert_pem)
         finally:
             cert_file.close()
-        logging.info(
-            "Server issued certificate; certificate written to %s", cert_path)
+        logging.info("Server issued certificate; certificate written to %s",
+                     act_cert_path)
 
         if certr.cert_chain_uri:
             # TODO: Except
@@ -174,8 +179,9 @@ class Client(object):
             if chain_cert:
                 chain_file, act_chain_path = le_util.unique_file(
                     chain_path, 0o644)
+                chain_pem = chain_cert.to_pem()
                 try:
-                    chain_file.write(chain_cert.to_pem())
+                    chain_file.write(chain_pem)
                 finally:
                     chain_file.close()
 

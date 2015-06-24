@@ -1,6 +1,7 @@
 """Let's Encrypt CLI."""
 # TODO: Sanity check all input.  Be sure to avoid shell code etc...
 import argparse
+import atexit
 import logging
 import os
 import sys
@@ -20,6 +21,7 @@ from letsencrypt import errors
 from letsencrypt import interfaces
 from letsencrypt import le_util
 from letsencrypt import log
+from letsencrypt import reporter
 
 from letsencrypt.display import util as display_util
 from letsencrypt.display import ops as display_ops
@@ -103,7 +105,7 @@ def run(args, config, plugins):
                                                  installer, plugins)
     if not lineage:
         return "Certificate could not be obtained"
-    acme.deploy_certificate(doms, lineage)
+    acme.deploy_certificate(doms, lineage.privkey, lineage.cert, lineage.chain)
     acme.enhance_config(doms, args.redirect)
 
 
@@ -145,8 +147,7 @@ def install(args, config, plugins):
     acme, doms = _common_run(
         args, config, acc, authenticator=None, installer=installer)
     assert args.cert_path is not None
-    # XXX: This API has changed as a result of RenewableCert!
-    # acme.deploy_certificate(doms, acc.key, args.cert_path, args.chain_path)
+    acme.deploy_certificate(doms, acc.key.file, args.cert_path, args.chain_path)
     acme.enhance_config(doms, args.redirect)
 
 
@@ -241,15 +242,31 @@ def create_parser(plugins):
     add("--version", action="version", version="%(prog)s {0}".format(
         letsencrypt.__version__))
     add("-v", "--verbose", dest="verbose_count", action="count",
-        default=flag_default("verbose_count"))
+        default=flag_default("verbose_count"), help="This flag can be used "
+        "multiple times to incrementally increase the verbosity of output, "
+        "e.g. -vvv.")
     add("--no-confirm", dest="no_confirm", action="store_true",
         help="Turn off confirmation screens, currently used for --revoke")
     add("-e", "--agree-tos", dest="tos", action="store_true",
         help="Skip the end user license agreement screen.")
     add("-t", "--text", dest="text_mode", action="store_true",
         help="Use the text output instead of the curses UI.")
-    add("--test-mode", action="store_true", help=config_help("test_mode"),
-        default=flag_default("test_mode"))
+
+    add("--no-simple-http-tls", action="store_true",
+        help=config_help("no_simple_http_tls"))
+
+    testing_group = parser.add_argument_group(
+        "testing", description="The following flags are meant for "
+        "testing purposes only! Do NOT change them, unless you "
+        "really know what you're doing!")
+    testing_group.add_argument(
+        "--no-verify-ssl", action="store_true",
+        help=config_help("no_verify_ssl"),
+        default=flag_default("no_verify_ssl"))
+    # TODO: apache and nginx plugins do NOT respect it
+    testing_group.add_argument(
+        "--dvsni-port", type=int, help=config_help("dvsni_port"),
+        default=flag_default("dvsni_port"))
 
     subparsers = parser.add_subparsers(metavar="SUBCOMMAND")
     def add_subparser(name, func):  # pylint: disable=missing-docstring
@@ -340,8 +357,8 @@ def _paths_parser(parser):
     add("--chain-path", default=flag_default("chain_path"),
         help=config_help("chain_path"))
 
-    add("--enroll-autorenew", default=None, action="store_true",
-        help=config_help("enroll_autorenew"))
+    add("--renewer-config-file", default=flag_default("renewer_config_file"),
+        help=config_help("renewer_config_file"))
 
     return parser
 
@@ -359,6 +376,11 @@ def main(args=sys.argv[1:]):
     else:
         displayer = display_util.NcursesDisplay()
     zope.component.provideUtility(displayer)
+
+    # Reporter
+    report = reporter.Reporter()
+    zope.component.provideUtility(report)
+    atexit.register(report.atexit_print_messages)
 
     # Logging
     level = -args.verbose_count * 10

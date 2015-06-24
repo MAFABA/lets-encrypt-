@@ -1,5 +1,4 @@
 """Let's Encrypt constants."""
-import configobj
 import logging
 
 from acme import challenges
@@ -22,12 +21,14 @@ CLI_DEFAULTS = dict(
     certs_dir="/etc/letsencrypt/certs",
     cert_path="/etc/letsencrypt/certs/cert-letsencrypt.pem",
     chain_path="/etc/letsencrypt/certs/chain-letsencrypt.pem",
-    test_mode=False,
+    renewer_config_file="/etc/letsencrypt/renewer.conf",
+    no_verify_ssl=False,
+    dvsni_port=challenges.DVSNI.PORT,
 )
 """Defaults for CLI flags and `.IConfig` attributes."""
 
 
-RENEWER_DEFAULTS = configobj.ConfigObj(dict(
+RENEWER_DEFAULTS = dict(
     renewer_config_file="/etc/letsencrypt/renewer.conf",
     renewal_configs_dir="/etc/letsencrypt/configs",
     archive_dir="/etc/letsencrypt/archive",
@@ -35,12 +36,12 @@ RENEWER_DEFAULTS = configobj.ConfigObj(dict(
     renewer_enabled="yes",
     renew_before_expiry="30 days",
     deploy_before_expiry="20 days",
-))
+)
 """Defaults for renewer script."""
 
 
 EXCLUSIVE_CHALLENGES = frozenset([frozenset([
-    challenges.DVSNI, challenges.SimpleHTTPS])])
+    challenges.DVSNI, challenges.SimpleHTTP])])
 """Mutually exclusive challenges."""
 
 
@@ -80,11 +81,3 @@ ACCOUNT_KEYS_DIR = "keys"
 REC_TOKEN_DIR = "recovery_tokens"
 """Directory where all recovery tokens are saved (relative to
 IConfig.work_dir)."""
-
-NETSTAT = "/bin/netstat"
-"""Location of netstat binary for checking whether a listener is already
-running on the specified port (Linux-specific)."""
-
-BOULDER_TEST_MODE_CHALLENGE_PORT = 5001
-"""Port that Boulder will connect on for validations in test mode."""
-

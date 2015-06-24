@@ -1,7 +1,17 @@
+.. notice for github users
+
+Official **documentation**, including `installation instructions`_, is
+available at https://letsencrypt.readthedocs.org.
+
+Generic information about Let's Encrypt project can be found at
+https://letsencrypt.org. Please read `Frequently Asked Questions (FAQ)
+<https://letsencrypt.org/faq/>`_.
+
+
 About the Let's Encrypt Client
 ==============================
 
-|build-status| |coverage| |docs|
+|build-status| |coverage| |docs| |container|
 
 In short: getting and installing SSL/TLS certificates made easy (`watch demo video`_).
 
@@ -43,6 +53,13 @@ server automatically!::
    :target: https://readthedocs.org/projects/letsencrypt/
    :alt: Documentation status
 
+.. |container| image:: https://quay.io/repository/letsencrypt/lets-encrypt-preview/status
+   :target: https://quay.io/repository/letsencrypt/lets-encrypt-preview
+   :alt: Docker Repository on Quay.io
+
+.. _`installation instructions`:
+   https://letsencrypt.readthedocs.org/en/latest/using.html
+
 .. _watch demo video: https://www.youtube.com/watch?v=Gas_sSB-5SU
 
 
@@ -81,7 +98,7 @@ Current Features
 Links
 -----
 
-Documentation: https://letsencrypt.readthedocs.org/
+Documentation: https://letsencrypt.readthedocs.org
 
 Software project: https://github.com/letsencrypt/lets-encrypt-preview
 

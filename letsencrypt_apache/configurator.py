@@ -18,6 +18,8 @@ from letsencrypt import errors
 from letsencrypt import interfaces
 from letsencrypt import le_util
 
+from letsencrypt.plugins import common
+
 from letsencrypt_apache import constants
 from letsencrypt_apache import dvsni
 from letsencrypt_apache import obj
@@ -146,7 +148,7 @@ class ApacheConfigurator(augeas_configurator.AugeasConfigurator):
 
         temp_install(self.conf('mod-ssl-conf'))
 
-    def deploy_cert(self, domain, cert_path, key, chain_path=None):
+    def deploy_cert(self, domain, cert_path, key_path, chain_path=None):
         """Deploys certificate to specified virtual host.
 
         Currently tries to find the last directives to deploy the cert in
@@ -160,11 +162,6 @@ class ApacheConfigurator(augeas_configurator.AugeasConfigurator):
 
         .. todo:: Might be nice to remove chain directive if none exists
                   This shouldn't happen within letsencrypt though
-
-        :param str domain: domain to deploy certificate
-        :param str cert_path: certificate filename
-        :param str key: private key filename
-        :param str chain_path: certificate chain filename
 
         """
         vhost = self.choose_vhost(domain)
@@ -184,15 +181,15 @@ class ApacheConfigurator(augeas_configurator.AugeasConfigurator):
         if not path["cert_path"] or not path["cert_key"]:
             # Throw some can't find all of the directives error"
             logging.warn(
-                "Cannot find a cert or key directive in %s", vhost.path)
-            logging.warn("VirtualHost was not modified")
+                "Cannot find a cert or key directive in %s. "
+                "VirtualHost was not modified", vhost.path)
             # Presumably break here so that the virtualhost is not modified
             return False
 
         logging.info("Deploying Certificate to VirtualHost %s", vhost.filep)
 
         self.aug.set(path["cert_path"][0], cert_path)
-        self.aug.set(path["cert_key"][0], key)
+        self.aug.set(path["cert_key"][0], key_path)
         if chain_path is not None:
             if not path["chain_path"]:
                 self.parser.add_dir(
@@ -204,7 +201,7 @@ class ApacheConfigurator(augeas_configurator.AugeasConfigurator):
                             (vhost.filep,
                              ", ".join(str(addr) for addr in vhost.addrs)))
         self.save_notes += "\tSSLCertificateFile %s\n" % cert_path
-        self.save_notes += "\tSSLCertificateKeyFile %s\n" % key
+        self.save_notes += "\tSSLCertificateKeyFile %s\n" % key_path
         if chain_path is not None:
             self.save_notes += "\tSSLCertificateChainFile %s\n" % chain_path
 
@@ -235,7 +232,7 @@ class ApacheConfigurator(augeas_configurator.AugeasConfigurator):
                 return vhost
         # Checking for domain name in vhost address
         # This technique is not recommended by Apache but is technically valid
-        target_addr = obj.Addr((target_name, "443"))
+        target_addr = common.Addr((target_name, "443"))
         for vhost in self.vhosts:
             if target_addr in vhost.addrs:
                 self.assoc[target_name] = vhost
@@ -326,7 +323,7 @@ class ApacheConfigurator(augeas_configurator.AugeasConfigurator):
         addrs = set()
         args = self.aug.match(path + "/arg")
         for arg in args:
-            addrs.add(obj.Addr.fromstring(self.aug.get(arg)))
+            addrs.add(common.Addr.fromstring(self.aug.get(arg)))
         is_ssl = False
 
         if self.parser.find_dir(
@@ -411,8 +408,8 @@ class ApacheConfigurator(augeas_configurator.AugeasConfigurator):
         # Note: This could be made to also look for ip:443 combo
         # TODO: Need to search only open directives and IfMod mod_ssl.c
         if len(self.parser.find_dir(parser.case_i("Listen"), "443")) == 0:
-            logging.debug("No Listen 443 directive found")
-            logging.debug("Setting the Apache Server to Listen on port 443")
+            logging.debug("No Listen 443 directive found. Setting the "
+                          "Apache Server to Listen on port 443")
             path = self.parser.add_dir_to_ifmodssl(
                 parser.get_aug_path(self.parser.loc["listen"]), "Listen", "443")
             self.save_notes += "Added Listen 443 directive to %s\n" % path
@@ -491,7 +488,7 @@ class ApacheConfigurator(augeas_configurator.AugeasConfigurator):
             addr_match % (ssl_fp, parser.case_i("VirtualHost")))
 
         for addr in ssl_addr_p:
-            old_addr = obj.Addr.fromstring(
+            old_addr = common.Addr.fromstring(
                 str(self.aug.get(addr)))
             ssl_addr = old_addr.get_addr_obj("443")
             self.aug.set(addr, str(ssl_addr))
@@ -794,8 +791,8 @@ class ApacheConfigurator(augeas_configurator.AugeasConfigurator):
         # Instead... should look for vhost of the form *:80
         # Should we prompt the user?
         ssl_addrs = ssl_vhost.addrs
-        if ssl_addrs == obj.Addr.fromstring("_default_:443"):
-            ssl_addrs = [obj.Addr.fromstring("*:443")]
+        if ssl_addrs == common.Addr.fromstring("_default_:443"):
+            ssl_addrs = [common.Addr.fromstring("*:443")]
 
         for vhost in self.vhosts:
             found = 0
@@ -925,9 +922,7 @@ class ApacheConfigurator(augeas_configurator.AugeasConfigurator):
 
         if proc.returncode != 0:
             # Enter recovery routine...
-            logging.error("Configtest failed")
-            logging.error(stdout)
-            logging.error(stderr)
+            logging.error("Configtest failed\n%s\n%s", stdout, stderr)
             return False
 
         return True
@@ -1057,9 +1052,8 @@ def enable_mod(mod_name, apache_init_script, apache_enmod):
                               stdout=open("/dev/null", "w"),
                               stderr=open("/dev/null", "w"))
         apache_restart(apache_init_script)
-    except (OSError, subprocess.CalledProcessError) as err:
-        logging.error("Error enabling mod_%s", mod_name)
-        logging.error("Exception: %s", err)
+    except (OSError, subprocess.CalledProcessError):
+        logging.exception("Error enabling mod_%s", mod_name)
         sys.exit(1)
 
 
@@ -1122,9 +1116,7 @@ def apache_restart(apache_init_script):
 
         if proc.returncode != 0:
             # Enter recovery routine...
-            logging.error("Apache Restart Failed!")
-            logging.error(stdout)
-            logging.error(stderr)
+            logging.error("Apache Restart Failed!\n%s\n%s", stdout, stderr)
             return False
 
     except (OSError, ValueError):

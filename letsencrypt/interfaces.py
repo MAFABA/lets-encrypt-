@@ -148,8 +148,7 @@ class IConfig(zope.interface.Interface):
 
     """
     server = zope.interface.Attribute(
-        "CA hostname (and optionally :port). The server certificate must "
-        "be trusted in order to avoid further modifications to the client.")
+        "ACME new registration URI (including /acme/new-reg).")
     email = zope.interface.Attribute(
         "Email used for registration and recovery contact.")
     rsa_key_size = zope.interface.Attribute("Size of the RSA key.")
@@ -176,15 +175,21 @@ class IConfig(zope.interface.Interface):
     le_vhost_ext = zope.interface.Attribute(
         "SSL vhost configuration extension.")
 
-    enroll_autorenew = zope.interface.Attribute(
-        "Register this certificate in the database to be renewed"
-        " automatically.")
+    renewer_config_file = zope.interface.Attribute(
+        "Location of renewal configuration file.")
 
     cert_path = zope.interface.Attribute("Let's Encrypt certificate file path.")
     chain_path = zope.interface.Attribute("Let's Encrypt chain file path.")
 
-    test_mode = zope.interface.Attribute(
-        "Test mode. Disables certificate verification.")
+    no_verify_ssl = zope.interface.Attribute(
+        "Disable SSL certificate verification.")
+    dvsni_port = zope.interface.Attribute(
+        "Port number to perform DVSNI challenge. "
+        "Boulder in testing mode defaults to 5001.")
+
+    # TODO: not implemented
+    no_simple_http_tls = zope.interface.Attribute(
+        "Do not use TLS when solving SimpleHTTP challenges.")
 
 
 class IInstaller(IPlugin):
@@ -197,12 +202,13 @@ class IInstaller(IPlugin):
     def get_all_names():
         """Returns all names that may be authenticated."""
 
-    def deploy_cert(domain, cert, key, cert_chain=None):
+    def deploy_cert(domain, cert_path, key_path, chain_path=None):
         """Deploy certificate.
 
-        :param str domain: domain to deploy certificate
-        :param str cert: certificate filename
-        :param str key: private key filename
+        :param str domain: domain to deploy certificate file
+        :param str cert_path: absolute path to the certificate file
+        :param str key_path: absolute path to the private key file
+        :param str chain_path: absolute path to the certificate chain file
 
         """
 
@@ -351,3 +357,30 @@ class IValidator(zope.interface.Interface):
 
     def hsts(name):
         """Verify HSTS header is enabled."""
+
+
+class IReporter(zope.interface.Interface):
+    """Interface to collect and display information to the user."""
+
+    HIGH_PRIORITY = zope.interface.Attribute(
+        "Used to denote high priority messages")
+    MEDIUM_PRIORITY = zope.interface.Attribute(
+        "Used to denote medium priority messages")
+    LOW_PRIORITY = zope.interface.Attribute(
+        "Used to denote low priority messages")
+
+    def add_message(self, msg, priority, on_crash=False):
+        """Adds msg to the list of messages to be printed.
+
+        :param str msg: Message to be displayed to the user.
+
+        :param int priority: One of HIGH_PRIORITY, MEDIUM_PRIORITY, or
+            LOW_PRIORITY.
+
+        :param bool on_crash: Whether or not the message should be printed if
+            the program exits abnormally.
+
+        """
+
+    def print_messages(self):
+        """Prints messages to the user and clears the message queue."""

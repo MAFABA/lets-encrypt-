@@ -1,4 +1,4 @@
-"""Tests for proof_of_possession.py"""
+"""Tests for letsencrypt.proof_of_possession."""
 import Crypto.PublicKey.RSA
 import os
 import pkg_resources
@@ -8,7 +8,7 @@ import mock
 
 from acme import challenges
 from acme import jose
-from acme import messages2
+from acme import messages
 
 from letsencrypt import achallenges
 from letsencrypt import proof_of_possession
@@ -48,8 +48,8 @@ class ProofOfPossessionTest(unittest.TestCase):
             issuers=(), authorized_for=())
         chall = challenges.ProofOfPossession(
             alg=jose.RS256, nonce='zczv4HMLVe_0kimJ25Juig', hints=hints)
-        challb = messages2.ChallengeBody(
-            chall=chall, uri="http://example", status=messages2.STATUS_PENDING)
+        challb = messages.ChallengeBody(
+            chall=chall, uri="http://example", status=messages.STATUS_PENDING)
         self.achall = achallenges.ProofOfPossession(
             challb=challb, domain="example.com")
 
@@ -60,8 +60,8 @@ class ProofOfPossessionTest(unittest.TestCase):
             issuers=(), authorized_for=())
         chall = challenges.ProofOfPossession(
             alg=jose.HS512, nonce='zczv4HMLVe_0kimJ25Juig', hints=hints)
-        challb = messages2.ChallengeBody(
-            chall=chall, uri="http://example", status=messages2.STATUS_PENDING)
+        challb = messages.ChallengeBody(
+            chall=chall, uri="http://example", status=messages.STATUS_PENDING)
         self.achall = achallenges.ProofOfPossession(
             challb=challb, domain="example.com")
         self.assertEqual(self.proof_of_pos.perform(self.achall), None)
@@ -69,7 +69,7 @@ class ProofOfPossessionTest(unittest.TestCase):
     def test_perform_no_input(self):
         self.assertTrue(self.proof_of_pos.perform(self.achall).verify())
 
-    @mock.patch("letsencrypt.recovery_token.zope.component.getUtility")
+    @mock.patch("letsencrypt.proof_of_possession.zope.component.getUtility")
     def test_perform_with_input(self, mock_input):
         # Remove the matching certificate
         self.installer.get_all_certs_keys.return_value.pop()

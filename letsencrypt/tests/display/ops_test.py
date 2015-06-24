@@ -182,6 +182,24 @@ class ChooseAccountTest(unittest.TestCase):
         self.assertTrue(self._call([self.acc1, self.acc2]) is None)
 
 
+class GenSSLLabURLs(unittest.TestCase):
+    """Loose test of _gen_ssl_lab_urls. URL can change easily in the future"""
+    def setUp(self):
+        zope.component.provideUtility(display_util.FileDisplay(sys.stdout))
+
+    @classmethod
+    def _call(cls, domains):
+        from letsencrypt.display.ops import _gen_ssl_lab_urls
+        return _gen_ssl_lab_urls(domains)
+
+    def test_zero(self):
+        self.assertEqual(self._call([]), [])
+
+    def test_two(self):
+        urls = self._call(["eff.org", "umich.edu"])
+        self.assertTrue("eff.org" in urls[0])
+        self.assertTrue("umich.edu" in urls[1])
+
 class GenHttpsNamesTest(unittest.TestCase):
     """Test _gen_https_names."""
     def setUp(self):
@@ -307,7 +325,7 @@ class SuccessInstallationTest(unittest.TestCase):
         names = ["example.com", "abc.com"]
 
         self._call(names)
-
+        
         self.assertEqual(mock_util().notification.call_count, 1)
         arg = mock_util().notification.call_args_list[0][0][0]
 

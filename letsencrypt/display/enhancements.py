@@ -8,6 +8,8 @@ from letsencrypt import interfaces
 from letsencrypt.display import util as display_util
 
 
+logger = logging.getLogger(__name__)
+
 # Define a helper function to avoid verbose code
 util = zope.component.getUtility  # pylint: disable=invalid-name
 
@@ -21,16 +23,15 @@ def ask(enhancement):
     :returns: True if feature is desired, False otherwise
     :rtype: bool
 
-    :raises letsencrypt.errors.LetsEncryptClientError: If
-        the enhancement provided is not supported.
+    :raises .errors.Error: if the enhancement provided is not supported
 
     """
     try:
         # Call the appropriate function based on the enhancement
         return DISPATCH[enhancement]()
     except KeyError:
-        logging.error("Unsupported enhancement given to ask(): %s", enhancement)
-        raise errors.LetsEncryptClientError("Unsupported Enhancement")
+        logger.error("Unsupported enhancement given to ask(): %s", enhancement)
+        raise errors.Error("Unsupported Enhancement")
 
 
 def redirect_by_default():

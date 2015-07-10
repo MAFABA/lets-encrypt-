@@ -28,93 +28,23 @@ meta = dict(re.findall(r"""__([a-z]+)__ = "([^"]+)""", read_file(init_fn)))
 readme = read_file(os.path.join(here, 'README.rst'))
 changes = read_file(os.path.join(here, 'CHANGES.rst'))
 
-# #358: acme, letsencrypt, letsencrypt_apache, letsencrypt_nginx, etc.
-# shall be distributed separately. Please make sure to keep the
-# dependecy lists up to date: this is being somewhat checked below
-# using an assert statement! Separate lists are helpful for OS package
-# maintainers. and will make the future migration a lot easier.
-acme_install_requires = [
-    'argparse',
-    #'letsencrypt'  # TODO: uses testdata vectors
-    'mock',
-    'pycrypto',
-    'pyrfc3339',
-    'ndg-httpsclient',  # urllib3 InsecurePlatformWarning (#304)
-    'pyasn1',  # urllib3 InsecurePlatformWarning (#304)
-    'pytz',
-    'requests',
-    'werkzeug',
-    'M2Crypto',
-]
-letsencrypt_install_requires = [
-    #'acme',
-    'argparse',
-    'ConfigArgParse',
-    'configobj',
-    'M2Crypto',
-    'mock',
-    'parsedatetime',
-    'psutil>=2.1.0',  # net_connections introduced in 2.1.0
-    'pycrypto',
-    # https://pyopenssl.readthedocs.org/en/latest/api/crypto.html#OpenSSL.crypto.X509Req.get_extensions
-    'PyOpenSSL>=0.15',
-    'pyrfc3339',
-    'python-augeas',
-    'python2-pythondialog>=3.2.2rc1',  # Debian squeeze support, cf. #280
-    'pytz',
-    'requests',
-    'zope.component',
-    'zope.interface',
-    'M2Crypto',
-]
-letsencrypt_apache_install_requires = [
-    #'acme',
-    #'letsencrypt',
-    'mock',
-    'python-augeas',
-    'zope.component',
-    'zope.interface',
-]
-letsencrypt_nginx_install_requires = [
-    #'acme',
-    #'letsencrypt',
-    'pyparsing>=1.5.5',  # Python3 support; perhaps unnecessary?
-    'mock',
-    'zope.interface',
-]
-
 install_requires = [
+    'acme',
     'argparse',
     'ConfigArgParse',
     'configobj',
-    'mock',
-    'ndg-httpsclient',  # urllib3 InsecurePlatformWarning (#304)
+    'cryptography>=0.7',  # load_pem_x509_certificate
+    'mock<1.1.0',  # py26
     'parsedatetime',
     'psutil>=2.1.0',  # net_connections introduced in 2.1.0
-    'pyasn1',  # urllib3 InsecurePlatformWarning (#304)
-    'pycrypto',
     # https://pyopenssl.readthedocs.org/en/latest/api/crypto.html#OpenSSL.crypto.X509Req.get_extensions
     'PyOpenSSL>=0.15',
-    'pyparsing>=1.5.5',  # Python3 support; perhaps unnecessary?
     'pyrfc3339',
-    'python-augeas',
     'python2-pythondialog>=3.2.2rc1',  # Debian squeeze support, cf. #280
     'pytz',
-    'requests',
-    'werkzeug',
     'zope.component',
     'zope.interface',
-    # order of items in install_requires DOES matter and M2Crypto has
-    # to go last, see #152
-    'M2Crypto',
 ]
-
-assert set(install_requires) == set.union(*(set(ireq) for ireq in (
-    acme_install_requires,
-    letsencrypt_install_requires,
-    letsencrypt_apache_install_requires,
-    letsencrypt_nginx_install_requires
-))), "*install_requires don't match up!"
 
 dev_extras = [
     # Pin astroid==1.3.5, pylint==1.4.2 as a workaround for #289
@@ -178,19 +108,16 @@ setup(
         'console_scripts': [
             'letsencrypt = letsencrypt.cli:main',
             'letsencrypt-renewer = letsencrypt.renewer:main',
-            'jws = letsencrypt.acme.jose.jws:CLI.run',
         ],
         'letsencrypt.plugins': [
             'manual = letsencrypt.plugins.manual:ManualAuthenticator',
+            # TODO: null should probably not be presented to the user
+            'null = letsencrypt.plugins.null:Installer',
             'standalone = letsencrypt.plugins.standalone.authenticator'
             ':StandaloneAuthenticator',
-
-            # to be moved to separate pypi packages
-            'apache = letsencrypt_apache.configurator:ApacheConfigurator',
-            'nginx = letsencrypt_nginx.configurator:NginxConfigurator',
         ],
     },
 
-    zip_safe=False,
+    zip_safe=False,  # letsencrypt/tests/test_util.py is a symlink!
     include_package_data=True,
 )

@@ -13,17 +13,20 @@ import os
 import shutil
 import tempfile
 
-import Crypto.PublicKey.RSA
-import M2Crypto
+import OpenSSL
 
+from acme import client as acme_client
 from acme.jose import util as jose_util
 
+from letsencrypt import crypto_util
 from letsencrypt import errors
 from letsencrypt import le_util
-from letsencrypt import network
 
 from letsencrypt.display import util as display_util
 from letsencrypt.display import revocation
+
+
+logger = logging.getLogger(__name__)
 
 
 class Revoker(object):
@@ -31,8 +34,7 @@ class Revoker(object):
 
     .. todo:: Add a method to specify your own certificate for revocation - CLI
 
-    :ivar network: Network object
-    :type network: :class:`letsencrypt.network`
+    :ivar .acme.client.Client acme: ACME client
 
     :ivar installer: Installer object
     :type installer: :class:`~letsencrypt.interfaces.IInstaller`
@@ -45,7 +47,7 @@ class Revoker(object):
     """
     def __init__(self, installer, config, no_confirm=False):
         # XXX
-        self.network = network.Network(new_reg_uri=None, key=None, alg=None)
+        self.acme = acme_client.Client(new_reg_uri=None, key=None, alg=None)
 
         self.installer = installer
         self.config = config
@@ -67,11 +69,12 @@ class Revoker(object):
         """
         certs = []
         try:
-            clean_pem = Crypto.PublicKey.RSA.importKey(
-                authkey.pem).exportKey("PEM")
-        # https://www.dlitz.net/software/pycrypto/api/current/Crypto.PublicKey.RSA-module.html
-        except (IndexError, ValueError, TypeError):
-            raise errors.LetsEncryptRevokerError(
+            clean_pem = OpenSSL.crypto.dump_privatekey(
+                OpenSSL.crypto.FILETYPE_PEM, OpenSSL.crypto.load_privatekey(
+                    OpenSSL.crypto.FILETYPE_PEM, authkey.pem))
+        except OpenSSL.crypto.Error as error:
+            logger.debug(error, exc_info=True)
+            raise errors.RevokerError(
                 "Invalid key file specified to revoke_from_key")
 
         with open(self.list_path, "rb") as csvfile:
@@ -83,14 +86,15 @@ class Revoker(object):
                 #    certificate.
                 _, b_k = self._row_to_backup(row)
                 try:
-                    test_pem = Crypto.PublicKey.RSA.importKey(
-                        open(b_k).read()).exportKey("PEM")
-                except (IndexError, ValueError, TypeError):
+                    test_pem = OpenSSL.crypto.dump_privatekey(
+                        OpenSSL.crypto.FILETYPE_PEM, OpenSSL.crypto.load_privatekey(
+                            OpenSSL.crypto.FILETYPE_PEM, open(b_k).read()))
+                except OpenSSL.crypto.Error as error:
+                    logger.debug(error, exc_info=True)
                     # This should never happen given the assumptions of the
                     # module. If it does, it is probably best to delete the
                     # the offending key/cert. For now... just raise an exception
-                    raise errors.LetsEncryptRevokerError(
-                        "%s - backup file is corrupted.")
+                    raise errors.RevokerError("%s - backup file is corrupted.")
 
                 if clean_pem == test_pem:
                     certs.append(
@@ -98,7 +102,7 @@ class Revoker(object):
         if certs:
             self._safe_revoke(certs)
         else:
-            logging.info("No certificates using the authorized key were found.")
+            logger.info("No certificates using the authorized key were found.")
 
     def revoke_from_cert(self, cert_path):
         """Revoke a certificate by specifying a file path.
@@ -122,7 +126,7 @@ class Revoker(object):
                     self._safe_revoke([cert])
                     return
 
-        logging.info("Associated ACME certificate was not found.")
+        logger.info("Associated ACME certificate was not found.")
 
     def revoke_from_menu(self):
         """List trusted Let's Encrypt certificates."""
@@ -144,7 +148,7 @@ class Revoker(object):
                 else:
                     return
             else:
-                logging.info(
+                logger.info(
                     "There are not any trusted Let's Encrypt "
                     "certificates for this server.")
                 return
@@ -191,10 +195,15 @@ class Revoker(object):
 
         for (cert_path, _, path) in self.installer.get_all_certs_keys():
             try:
-                cert_sha1 = M2Crypto.X509.load_cert(
-                    cert_path).get_fingerprint(md="sha1")
-            except (IOError, M2Crypto.X509.X509Error):
+                with open(cert_path) as cert_file:
+                    cert_data = cert_file.read()
+            except IOError:
                 continue
+            try:
+                cert_obj, _ = crypto_util.pyopenssl_load_certificate(cert_data)
+            except errors.Error:
+                continue
+            cert_sha1 = cert_obj.digest("sha1")
             if cert_sha1 in csha1_vhlist:
                 csha1_vhlist[cert_sha1].append(path)
             else:
@@ -218,9 +227,9 @@ class Revoker(object):
                 if self.no_confirm or revocation.confirm_revocation(cert):
                     try:
                         self._acme_revoke(cert)
-                    except errors.LetsEncryptClientError:
+                    except errors.Error:
                         # TODO: Improve error handling when networking is set...
-                        logging.error(
+                        logger.error(
                             "Unable to revoke cert:%s%s", os.linesep, str(cert))
                     success_list.append(cert)
                     revocation.success_revocation(cert)
@@ -241,19 +250,19 @@ class Revoker(object):
         """
         # XXX | pylint: disable=unused-variable
 
-        # These will both have to change in the future away from M2Crypto
         # pylint: disable=protected-access
         certificate = jose_util.ComparableX509(cert._cert)
         try:
             with open(cert.backup_key_path, "rU") as backup_key_file:
-                key = Crypto.PublicKey.RSA.importKey(backup_key_file.read())
-
+                key = OpenSSL.crypto.load_privatekey(
+                    OpenSSL.crypto.FILETYPE_PEM, backup_key_file.read())
         # If the key file doesn't exist... or is corrupted
-        except (IndexError, ValueError, TypeError):
-            raise errors.LetsEncryptRevokerError(
+        except OpenSSL.crypto.Error as error:
+            logger.debug(error, exc_info=True)
+            raise errors.RevokerError(
                 "Corrupted backup key file: %s" % cert.backup_key_path)
 
-        return self.network.revoke(cert=None)  # XXX
+        return self.acme.revoke(cert=None)  # XXX
 
     def _remove_certs_keys(self, cert_list):  # pylint: disable=no-self-use
         """Remove certificate and key.
@@ -293,7 +302,7 @@ class Revoker(object):
 
         # This should never happen...
         if idx != len(cert_list):
-            raise errors.LetsEncryptRevokerError(
+            raise errors.RevokerError(
                 "Did not find all cert_list items to remove from LIST")
 
         shutil.copy2(list_path2, self.list_path)
@@ -367,8 +376,8 @@ class Revoker(object):
 class Cert(object):
     """Cert object used for Revocation convenience.
 
-    :ivar _cert: M2Crypto X509 cert
-    :type _cert: :class:`M2Crypto.X509`
+    :ivar _cert: Certificate
+    :type _cert: :class:`OpenSSL.crypto.X509`
 
     :ivar int idx: convenience index used for listing
     :ivar orig: (`str` path - original certificate, `str` status)
@@ -396,9 +405,17 @@ class Cert(object):
 
         """
         try:
-            self._cert = M2Crypto.X509.load_cert(cert_path)
-        except (IOError, M2Crypto.X509.X509Error):
-            raise errors.LetsEncryptRevokerError(
+            with open(cert_path) as cert_file:
+                cert_data = cert_file.read()
+        except IOError:
+            raise errors.RevokerError(
+                "Error loading certificate: %s" % cert_path)
+
+        try:
+            self._cert = OpenSSL.crypto.load_certificate(
+                OpenSSL.crypto.FILETYPE_PEM, cert_data)
+        except OpenSSL.crypto.Error:
+            raise errors.RevokerError(
                 "Error loading certificate: %s" % cert_path)
 
         self.idx = -1
@@ -445,8 +462,11 @@ class Cert(object):
         if not os.path.isfile(orig):
             status = Cert.DELETED_MSG
         else:
-            o_cert = M2Crypto.X509.load_cert(orig)
-            if self.get_fingerprint() != o_cert.get_fingerprint(md="sha1"):
+            with open(orig) as orig_file:
+                orig_data = orig_file.read()
+            o_cert = OpenSSL.crypto.load_certificate(
+                OpenSSL.crypto.FILETYPE_PEM, orig_data)
+            if self.get_fingerprint() != o_cert.digest("sha1"):
                 status = Cert.CHANGED_MSG
 
         # Verify original key path
@@ -466,47 +486,49 @@ class Cert(object):
         self.backup_path = backup
         self.backup_key_path = backup_key
 
-    # M2Crypto is eventually going to be replaced, hence the reason for _cert
     def get_cn(self):
         """Get common name."""
         return self._cert.get_subject().CN
 
     def get_fingerprint(self):
         """Get SHA1 fingerprint."""
-        return self._cert.get_fingerprint(md="sha1")
+        return self._cert.digest("sha1")
 
     def get_not_before(self):
         """Get not_valid_before field."""
-        return self._cert.get_not_before().get_datetime()
+        return crypto_util.asn1_generalizedtime_to_dt(
+            self._cert.get_notBefore())
 
     def get_not_after(self):
         """Get not_valid_after field."""
-        return self._cert.get_not_after().get_datetime()
+        return crypto_util.asn1_generalizedtime_to_dt(
+            self._cert.get_notAfter())
 
     def get_der(self):
         """Get certificate in der format."""
-        return self._cert.as_der()
+        return OpenSSL.crypto.dump_certificate(
+            OpenSSL.crypto.FILETYPE_ASN1, self._cert)
 
     def get_pub_key(self):
         """Get public key size.
 
-        .. todo:: M2Crypto doesn't support ECC, this will have to be updated
+        .. todo:: Support for ECC
 
         """
-        return "RSA " + str(self._cert.get_pubkey().size() * 8)
+        return "RSA {0}".format(self._cert.get_pubkey().bits)
 
     def get_san(self):
         """Get subject alternative name if available."""
-        try:
-            return self._cert.get_ext("subjectAltName").get_value()
-        except LookupError:
-            return ""
+        # pylint: disable=protected-access
+        return ", ".join(crypto_util._pyopenssl_cert_or_req_san(self._cert))
 
     def __str__(self):
         text = [
-            "Subject: %s" % self._cert.get_subject().as_text(),
+            "Subject: %s" % crypto_util.pyopenssl_x509_name_as_text(
+                self._cert.get_subject()),
             "SAN: %s" % self.get_san(),
-            "Issuer: %s" % self._cert.get_issuer().as_text(),
+            "Issuer: %s" % crypto_util.pyopenssl_x509_name_as_text(
+                self._cert.get_issuer()),
             "Public Key: %s" % self.get_pub_key(),
             "Not Before: %s" % str(self.get_not_before()),
             "Not After: %s" % str(self.get_not_after()),

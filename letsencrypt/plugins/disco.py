@@ -10,10 +10,17 @@ from letsencrypt import errors
 from letsencrypt import interfaces
 
 
+logger = logging.getLogger(__name__)
+
+
 class PluginEntryPoint(object):
     """Plugin entry point."""
 
-    PREFIX_FREE_DISTRIBUTIONS = ["letsencrypt"]
+    PREFIX_FREE_DISTRIBUTIONS = [
+        "letsencrypt",
+        "letsencrypt-apache",
+        "letsencrypt-nginx",
+    ]
     """Distributions for which prefix will be omitted."""
 
     # this object is mutable, don't allow it to be hashed!
@@ -68,11 +75,11 @@ class PluginEntryPoint(object):
         for iface in ifaces:  # zope.interface.providedBy(plugin)
             try:
                 zope.interface.verify.verifyObject(iface, self.init())
-            except zope.interface.exceptions.BrokenImplementation:
+            except zope.interface.exceptions.BrokenImplementation as error:
                 if iface.implementedBy(self.plugin_cls):
-                    logging.debug(
-                        "%s implements %s but object does "
-                        "not verify", self.plugin_cls, iface.__name__)
+                    logger.debug(
+                        "%s implements %s but object does not verify: %s",
+                        self.plugin_cls, iface.__name__, error, exc_info=True)
                 return False
         return True
 
@@ -80,7 +87,7 @@ class PluginEntryPoint(object):
     def prepared(self):
         """Has the plugin been prepared already?"""
         if not self.initialized:
-            logging.debug(".prepared called on uninitialized %r", self)
+            logger.debug(".prepared called on uninitialized %r", self)
         return self._prepared is not None
 
     def prepare(self):
@@ -89,11 +96,15 @@ class PluginEntryPoint(object):
         if self._prepared is None:
             try:
                 self._initialized.prepare()
-            except errors.LetsEncryptMisconfigurationError as error:
-                logging.debug("Misconfigured %r: %s", self, error)
+            except errors.MisconfigurationError as error:
+                logger.debug("Misconfigured %r: %s", self, error, exc_info=True)
                 self._prepared = error
-            except errors.LetsEncryptNoInstallationError as error:
-                logging.debug("No installation (%r): %s", self, error)
+            except errors.NoInstallationError as error:
+                logger.debug(
+                    "No installation (%r): %s", self, error, exc_info=True)
+                self._prepared = error
+            except errors.PluginError as error:
+                logger.debug("Other error:(%r): %s", self, error, exc_info=True)
                 self._prepared = error
             else:
                 self._prepared = True
@@ -102,8 +113,7 @@ class PluginEntryPoint(object):
     @property
     def misconfigured(self):
         """Is plugin misconfigured?"""
-        return isinstance(
-            self._prepared, errors.LetsEncryptMisconfigurationError)
+        return isinstance(self._prepared, errors.MisconfigurationError)
 
     @property
     def available(self):
@@ -150,7 +160,7 @@ class PluginsRegistry(collections.Mapping):
             if interfaces.IPluginFactory.providedBy(plugin_ep.plugin_cls):
                 plugins[plugin_ep.name] = plugin_ep
             else:  # pragma: no cover
-                logging.warning(
+                logger.warning(
                     "%r does not provide IPluginFactory, skipping", plugin_ep)
         return cls(plugins)
 

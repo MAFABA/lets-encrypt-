@@ -1,8 +1,44 @@
 """Let's Encrypt client interfaces."""
+import abc
 import zope.interface
 
 # pylint: disable=no-self-argument,no-method-argument,no-init,inherit-non-class
 # pylint: disable=too-few-public-methods
+
+
+class AccountStorage(object):
+    """Accounts storage interface."""
+
+    __metaclass__ = abc.ABCMeta
+
+    @abc.abstractmethod
+    def find_all(self):  # pragma: no cover
+        """Find all accounts.
+
+        :returns: All found accounts.
+        :rtype: list
+
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def load(self, account_id):  # pragma: no cover
+        """Load an account by its id.
+
+        :raises .AccountNotFound: if account could not be found
+        :raises .AccountStorageError: if account could not be loaded
+
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def save(self, account):  # pragma: no cover
+        """Save account.
+
+        :raises .AccountStorageError: if account could not be saved
+
+        """
+        raise NotImplementedError()
 
 
 class IPluginFactory(zope.interface.Interface):
@@ -68,10 +104,10 @@ class IPlugin(zope.interface.Interface):
 
          Finish up any additional initialization.
 
-         :raises letsencrypt.errors.LetsEncryptMisconfigurationError:
-             when full initialization cannot be completed. Plugin will be
-             displayed on a list of available plugins.
-         :raises letsencrypt.errors.LetsEncryptNoInstallationError:
+         :raises .MisconfigurationError:
+             when full initialization cannot be completed. Plugin will
+             be displayed on a list of available plugins.
+         :raises .NoInstallationError:
              when the necessary programs/files cannot be located. Plugin
              will NOT be displayed on a list of available plugins.
 
@@ -82,6 +118,8 @@ class IPlugin(zope.interface.Interface):
 
         Should describe the steps taken and any relevant info to help the user
         decide which plugin to use.
+
+        :rtype str:
 
         """
 
@@ -155,31 +193,26 @@ class IConfig(zope.interface.Interface):
 
     config_dir = zope.interface.Attribute("Configuration directory.")
     work_dir = zope.interface.Attribute("Working directory.")
+
+    accounts_dir = zope.interface.Attribute(
+        "Directory where all account information is stored.")
     backup_dir = zope.interface.Attribute("Configuration backups directory.")
-    temp_checkpoint_dir = zope.interface.Attribute(
-        "Temporary checkpoint directory.")
-    in_progress_dir = zope.interface.Attribute(
-        "Directory used before a permanent checkpoint is finalized.")
+    cert_dir = zope.interface.Attribute(
+        "Directory where newly generated Certificate Signing Requests "
+        "(CSRs) and certificates not enrolled in the renewer are saved.")
     cert_key_backup = zope.interface.Attribute(
         "Directory where all certificates and keys are stored. "
         "Used for easy revocation.")
-    accounts_dir = zope.interface.Attribute(
-        "Directory where all account information is stored.")
-    account_keys_dir = zope.interface.Attribute(
-        "Directory where all account keys are stored.")
+    in_progress_dir = zope.interface.Attribute(
+        "Directory used before a permanent checkpoint is finalized.")
+    key_dir = zope.interface.Attribute("Keys storage.")
     rec_token_dir = zope.interface.Attribute(
         "Directory where all recovery tokens are saved.")
-    key_dir = zope.interface.Attribute("Keys storage.")
-    cert_dir = zope.interface.Attribute("Certificates storage.")
-
-    le_vhost_ext = zope.interface.Attribute(
-        "SSL vhost configuration extension.")
+    temp_checkpoint_dir = zope.interface.Attribute(
+        "Temporary checkpoint directory.")
 
     renewer_config_file = zope.interface.Attribute(
         "Location of renewal configuration file.")
-
-    cert_path = zope.interface.Attribute("Let's Encrypt certificate file path.")
-    chain_path = zope.interface.Attribute("Let's Encrypt chain file path.")
 
     no_verify_ssl = zope.interface.Attribute(
         "Disable SSL certificate verification.")
@@ -187,9 +220,10 @@ class IConfig(zope.interface.Interface):
         "Port number to perform DVSNI challenge. "
         "Boulder in testing mode defaults to 5001.")
 
-    # TODO: not implemented
     no_simple_http_tls = zope.interface.Attribute(
         "Do not use TLS when solving SimpleHTTP challenges.")
+    simple_http_port = zope.interface.Attribute(
+        "Port used in the SimpleHttp challenge.")
 
 
 class IInstaller(IPlugin):
@@ -200,7 +234,11 @@ class IInstaller(IPlugin):
     """
 
     def get_all_names():
-        """Returns all names that may be authenticated."""
+        """Returns all names that may be authenticated.
+
+        :rtype: `list` of `str`
+
+        """
 
     def deploy_cert(domain, cert_path, key_path, chain_path=None):
         """Deploy certificate.

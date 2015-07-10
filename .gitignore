@@ -4,7 +4,8 @@
 build/
 dist/
 /venv/
-/.tox/
+/tox.venv/
+letsencrypt.log
 
 # coverage
 .coverage
@@ -16,3 +17,7 @@ dist/
 *~
 *.swp
 \#*#
+.idea
+
+# auth --cert-path --chain-path
+/*.pem

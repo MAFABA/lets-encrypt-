@@ -9,11 +9,14 @@
 #     - 6.0.10 "squeeze" (x64)
 #     - 7.8 "wheezy" (x64)
 #     - 8.0 "jessie" (x64)
+#   - Raspbian:
+#     - 7.8 (armhf)
 
 
 # virtualenv binary can be found in different packages depending on
 # distro version (#346)
 newer () {
+  apt-get install -y lsb-release --no-install-recommends
   distro=$(lsb_release -si)
   # 6.0.10 => 60, 14.04 => 1404
   # TODO: in sid version==unstable
@@ -29,6 +32,8 @@ newer () {
   fi
 }
 
+apt-get update
+
 # you can force newer if lsb_release is not available (e.g. Docker
 # debian:jessie base image)
 if [ "$1" = "newer" ] || newer
@@ -39,21 +44,14 @@ else
 fi
 
 
-# dpkg-dev: dpkg-architecture binary necessary to compile M2Crypto, c.f.
-#           #276, https://github.com/martinpaljak/M2Crypto/issues/62,
-#           M2Crypto setup.py:add_multiarch_paths
-
-apt-get update
 apt-get install -y --no-install-recommends \
   git-core \
   python \
   python-dev \
   "$virtualenv" \
   gcc \
-  swig \
   dialog \
   libaugeas0 \
   libssl-dev \
   libffi-dev \
   ca-certificates \
-  dpkg-dev \

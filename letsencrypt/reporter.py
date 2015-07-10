@@ -11,6 +11,9 @@ import zope.interface
 from letsencrypt import interfaces
 
 
+logger = logging.getLogger(__name__)
+
+
 class Reporter(object):
     """Collects and displays information to the user.
 
@@ -48,7 +51,7 @@ class Reporter(object):
         """
         assert self.HIGH_PRIORITY <= priority <= self.LOW_PRIORITY
         self.messages.put(self._msg_type(priority, msg, on_crash))
-        logging.info("Reporting to user: %s", msg)
+        logger.info("Reporting to user: %s", msg)
 
     def atexit_print_messages(self, pid=os.getpid()):
         """Function to be registered with atexit to print messages.
@@ -66,7 +69,8 @@ class Reporter(object):
 
         If there is an unhandled exception, only messages for which
         ``on_crash`` is ``True`` are printed.
-"""
+
+        """
         bold_on = False
         if not self.messages.empty():
             no_exception = sys.exc_info()[0] is None
@@ -74,14 +78,21 @@ class Reporter(object):
             if bold_on:
                 print self._BOLD
             print 'IMPORTANT NOTES:'
-            wrapper = textwrap.TextWrapper(initial_indent=' - ',
-                                           subsequent_indent=(' ' * 3))
+            first_wrapper = textwrap.TextWrapper(
+                initial_indent=' - ', subsequent_indent=(' ' * 3))
+            next_wrapper = textwrap.TextWrapper(
+                initial_indent=first_wrapper.subsequent_indent,
+                subsequent_indent=first_wrapper.subsequent_indent)
         while not self.messages.empty():
             msg = self.messages.get()
             if no_exception or msg.on_crash:
                 if bold_on and msg.priority > self.HIGH_PRIORITY:
                     sys.stdout.write(self._RESET)
                     bold_on = False
-                print wrapper.fill(msg.text)
+                lines = msg.text.splitlines()
+                print first_wrapper.fill(lines[0])
+                if len(lines) > 1:
+                    print "\n".join(
+                        next_wrapper.fill(line) for line in lines[1:])
         if bold_on:
             sys.stdout.write(self._RESET)

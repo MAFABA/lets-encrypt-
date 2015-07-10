@@ -17,10 +17,14 @@ class NamespaceConfig(object):
     :attr:`~letsencrypt.interfaces.IConfig.work_dir` and relative
     paths defined in :py:mod:`letsencrypt.constants`:
 
-      - ``temp_checkpoint_dir``
-      - ``in_progress_dir``
-      - ``cert_key_backup``
-      - ``rec_token_dir``
+      - `accounts_dir`
+      - `cert_dir`
+      - `cert_key_backup`
+      - `in_progress_dir`
+      - `key_dir`
+      - `rec_token_dir`
+      - `renewer_config_file`
+      - `temp_checkpoint_dir`
 
     :ivar namespace: Namespace typically produced by
         :meth:`argparse.ArgumentParser.parse_args`.
@@ -36,25 +40,10 @@ class NamespaceConfig(object):
         return getattr(self.namespace, name)
 
     @property
-    def temp_checkpoint_dir(self):  # pylint: disable=missing-docstring
-        return os.path.join(
-            self.namespace.work_dir, constants.TEMP_CHECKPOINT_DIR)
-
-    @property
-    def in_progress_dir(self):  # pylint: disable=missing-docstring
-        return os.path.join(self.namespace.work_dir, constants.IN_PROGRESS_DIR)
-
-    @property
     def server_path(self):
         """File path based on ``server``."""
         parsed = urlparse.urlparse(self.namespace.server)
         return (parsed.netloc + parsed.path).replace('/', os.path.sep)
-
-    @property
-    def cert_key_backup(self):  # pylint: disable=missing-docstring
-        return os.path.join(
-            self.namespace.work_dir, constants.CERT_KEY_BACKUP_DIR,
-            self.server_path)
 
     @property
     def accounts_dir(self):  #pylint: disable=missing-docstring
@@ -62,12 +51,60 @@ class NamespaceConfig(object):
             self.namespace.config_dir, constants.ACCOUNTS_DIR, self.server_path)
 
     @property
-    def account_keys_dir(self):  #pylint: disable=missing-docstring
-        return os.path.join(
-            self.namespace.config_dir, constants.ACCOUNTS_DIR,
-            self.server_path, constants.ACCOUNT_KEYS_DIR)
+    def backup_dir(self):  # pylint: disable=missing-docstring
+        return os.path.join(self.namespace.work_dir, constants.BACKUP_DIR)
+
+    @property
+    def cert_dir(self):  # pylint: disable=missing-docstring
+        return os.path.join(self.namespace.config_dir, constants.CERT_DIR)
+
+    @property
+    def cert_key_backup(self):  # pylint: disable=missing-docstring
+        return os.path.join(self.namespace.work_dir,
+                            constants.CERT_KEY_BACKUP_DIR, self.server_path)
+
+    @property
+    def in_progress_dir(self):  # pylint: disable=missing-docstring
+        return os.path.join(self.namespace.work_dir, constants.IN_PROGRESS_DIR)
+
+    @property
+    def key_dir(self):  # pylint: disable=missing-docstring
+        return os.path.join(self.namespace.config_dir, constants.KEY_DIR)
 
     # TODO: This should probably include the server name
     @property
     def rec_token_dir(self):  # pylint: disable=missing-docstring
         return os.path.join(self.namespace.work_dir, constants.REC_TOKEN_DIR)
+
+    @property
+    def temp_checkpoint_dir(self):  # pylint: disable=missing-docstring
+        return os.path.join(
+            self.namespace.work_dir, constants.TEMP_CHECKPOINT_DIR)
+
+
+class RenewerConfiguration(object):
+    """Configuration wrapper for renewer."""
+
+    def __init__(self, namespace):
+        self.namespace = namespace
+
+    def __getattr__(self, name):
+        return getattr(self.namespace, name)
+
+    @property
+    def archive_dir(self):  # pylint: disable=missing-docstring
+        return os.path.join(self.namespace.config_dir, constants.ARCHIVE_DIR)
+
+    @property
+    def live_dir(self):  # pylint: disable=missing-docstring
+        return os.path.join(self.namespace.config_dir, constants.LIVE_DIR)
+
+    @property
+    def renewal_configs_dir(self):  # pylint: disable=missing-docstring
+        return os.path.join(
+            self.namespace.config_dir, constants.RENEWAL_CONFIGS_DIR)
+
+    @property
+    def renewer_config_file(self):  # pylint: disable=missing-docstring
+        return os.path.join(
+            self.namespace.config_dir, constants.RENEWER_CONFIG_FILENAME)

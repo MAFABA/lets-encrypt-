@@ -6,11 +6,11 @@ import unittest
 import mock
 
 from acme import challenges
+from acme import client as acme_client
 from acme import messages
 
 from letsencrypt import errors
 from letsencrypt import le_util
-from letsencrypt import network
 
 from letsencrypt.tests import acme_util
 
@@ -61,8 +61,8 @@ class ChallengeFactoryTest(unittest.TestCase):
             [mock.Mock(chall="chall", typ="unrecognized")],
             [messages.STATUS_PENDING])
 
-        self.assertRaises(errors.LetsEncryptClientError,
-                          self.handler._challenge_factory, "failure.com", [0])
+        self.assertRaises(
+            errors.Error, self.handler._challenge_factory, "failure.com", [0])
 
 
 class GetAuthorizationsTest(unittest.TestCase):
@@ -86,7 +86,7 @@ class GetAuthorizationsTest(unittest.TestCase):
         self.mock_dv_auth.perform.side_effect = gen_auth_resp
 
         self.mock_account = mock.Mock(key=le_util.Key("file_path", "PEM"))
-        self.mock_net = mock.MagicMock(spec=network.Network)
+        self.mock_net = mock.MagicMock(spec=acme_client.Client)
 
         self.handler = AuthHandler(
             self.mock_dv_auth, self.mock_cont_auth,
@@ -153,8 +153,8 @@ class GetAuthorizationsTest(unittest.TestCase):
             gen_dom_authzr, challs=acme_util.CHALLENGES)
         self.mock_dv_auth.perform.side_effect = errors.AuthorizationError
 
-        self.assertRaises(errors.AuthorizationError,
-                          self.handler.get_authorizations, ["0"])
+        self.assertRaises(
+            errors.AuthorizationError, self.handler.get_authorizations, ["0"])
 
     def _validate_all(self, unused_1, unused_2):
         for dom in self.handler.authzr.keys():
@@ -216,11 +216,12 @@ class PollChallengesTest(unittest.TestCase):
             self.assertEqual(authzr.body.status, messages.STATUS_PENDING)
 
     @mock.patch("letsencrypt.auth_handler.time")
-    def test_poll_challenges_failure(self, unused_mock_time):
+    @mock.patch("letsencrypt.auth_handler.zope.component.getUtility")
+    def test_poll_challenges_failure(self, unused_mock_time, unused_mock_zope):
         self.mock_net.poll.side_effect = self._mock_poll_solve_one_invalid
-        self.assertRaises(errors.AuthorizationError,
-                          self.handler._poll_challenges,
-                          self.chall_update, False)
+        self.assertRaises(
+            errors.AuthorizationError, self.handler._poll_challenges,
+            self.chall_update, False)
 
     @mock.patch("letsencrypt.auth_handler.time")
     def test_unable_to_find_challenge_status(self, unused_mock_time):
@@ -229,8 +230,8 @@ class PollChallengesTest(unittest.TestCase):
         self.chall_update[self.doms[0]].append(
             challb_to_achall(acme_util.RECOVERY_CONTACT_P, "key", self.doms[0]))
         self.assertRaises(
-            errors.AuthorizationError,
-            self.handler._poll_challenges, self.chall_update, False)
+            errors.AuthorizationError, self.handler._poll_challenges,
+            self.chall_update, False)
 
     def test_verify_authzr_failure(self):
         self.assertRaises(
@@ -348,8 +349,8 @@ class GenChallengePathTest(unittest.TestCase):
         prefs = [challenges.DVSNI]
         combos = ((0, 1),)
 
-        self.assertRaises(errors.AuthorizationError,
-                          self._call, challbs, prefs, combos)
+        self.assertRaises(
+            errors.AuthorizationError, self._call, challbs, prefs, combos)
 
 
 class MutuallyExclusiveTest(unittest.TestCase):
@@ -418,6 +419,54 @@ class IsPreferredTest(unittest.TestCase):
     def test_mutually_exclusive_same_type(self):
         self.assertTrue(
             self._call(acme_util.DVSNI_P, frozenset([acme_util.DVSNI_P])))
+
+
+class ReportFailedChallsTest(unittest.TestCase):
+    """Tests for letsencrypt.auth_handler._report_failed_challs."""
+    # pylint: disable=protected-access
+
+    def setUp(self):
+        from letsencrypt import achallenges
+
+        kwargs = {
+            "chall" : acme_util.SIMPLE_HTTP,
+            "uri": "uri",
+            "status": messages.STATUS_INVALID,
+            "error": messages.Error(typ="tls", detail="detail"),
+        }
+
+        self.simple_http = achallenges.SimpleHTTP(
+            challb=messages.ChallengeBody(**kwargs),# pylint: disable=star-args
+            domain="example.com",
+            key=acme_util.KEY)
+
+        kwargs["chall"] = acme_util.DVSNI
+        self.dvsni_same = achallenges.DVSNI(
+            challb=messages.ChallengeBody(**kwargs),# pylint: disable=star-args
+            domain="example.com",
+            key=acme_util.KEY)
+
+        kwargs["error"] = messages.Error(typ="dnssec", detail="detail")
+        self.dvsni_diff = achallenges.DVSNI(
+            challb=messages.ChallengeBody(**kwargs),# pylint: disable=star-args
+            domain="foo.bar",
+            key=acme_util.KEY)
+
+    @mock.patch("letsencrypt.auth_handler.zope.component.getUtility")
+    def test_same_error_and_domain(self, mock_zope):
+        from letsencrypt import auth_handler
+
+        auth_handler._report_failed_challs([self.simple_http, self.dvsni_same])
+        call_list = mock_zope().add_message.call_args_list
+        self.assertTrue(len(call_list) == 1)
+        self.assertTrue("Domains: example.com\n" in call_list[0][0][0])
+
+    @mock.patch("letsencrypt.auth_handler.zope.component.getUtility")
+    def test_different_errors_and_domains(self, mock_zope):
+        from letsencrypt import auth_handler
+
+        auth_handler._report_failed_challs([self.simple_http, self.dvsni_diff])
+        self.assertTrue(mock_zope().add_message.call_count == 2)
 
 
 def gen_auth_resp(chall_list):

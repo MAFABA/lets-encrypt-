@@ -17,12 +17,10 @@ export PATH="/usr/sbin:$PATH"  # /usr/sbin/nginx
 common() {
     letsencrypt_test \
         --authenticator standalone \
-        --installer null \
         "$@"
 }
 
 common --domains le1.wtf auth
-common --domains le2.wtf run
 common -a manual -d le.wtf auth
 common -a manual -d le.wtf --no-simple-http-tls auth
 

@@ -10,6 +10,7 @@ import parsedatetime
 import pytz
 import pyrfc3339
 
+from letsencrypt import crypto_util
 from letsencrypt import constants
 from letsencrypt import errors
 from letsencrypt import le_util
@@ -664,3 +665,30 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
         with open(target["fullchain"], "w") as f:
             f.write(new_cert + new_chain)
         return target_version
+
+    def formatted_str(self, version=None):
+        if version is None:
+            target = self.current_target("cert")
+        else:
+            target = self.version("cert", version)
+        with open(target) as cert_file:
+            cert_obj = crypto_util.pyopenssl_load_certificate(cert_file.read())
+
+        string = (
+            "Names: {names}{br}"
+            "Issuer: {issuer}{br}"
+            "Not Before: {nb}{br}"
+            "Not After: {na}{br}"
+            "Signature Alg: {sig}{br}"
+            "Serial: {serial}{br}"
+            "SHA1: {sha1}{br}"
+        ).format(
+            names=crypto_util.get_sans_from_pyopenssl(cert_obj),
+            issuer=cert_obj.get_issuer(),
+            nb=self.notbefore(version),
+            na=self.notafter(version),
+            sig=cert_obj.get_signature_algorithm(),
+            serial=cert_obj.get_serial_number(),
+            sha1=cert_obj.digest("sha1"),
+            br=os.linesep
+        )

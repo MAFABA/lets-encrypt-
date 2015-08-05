@@ -119,11 +119,6 @@ def make_csr(key_str, domains):
                                 OpenSSL.crypto.FILETYPE_ASN1))
 
 
-# WARNING: the csr and private key file are possible attack vectors for TOCTOU
-# We should either...
-# A. Do more checks to verify that the CSR is trusted/valid
-# B. Audit the parsing code for vulnerabilities
-
 def valid_csr(csr):
     """Validate CSR.
 
@@ -195,6 +190,15 @@ def valid_privkey(privkey):
         return False
 
 
+def pyopenssl_load_certificate(data):
+    """Load PEM/DER certificate.
+
+    :raises errors.Error:
+
+    """
+    return _pyopenssl_load(data, OpenSSL.crypto.load_certificate)
+
+
 def _pyopenssl_load(data, method, types=(
         OpenSSL.crypto.FILETYPE_PEM, OpenSSL.crypto.FILETYPE_ASN1)):
     openssl_errors = []
@@ -206,14 +210,6 @@ def _pyopenssl_load(data, method, types=(
     raise errors.Error("Unable to load: {0}".format(",".join(
         str(error) for error in openssl_errors)))
 
-def pyopenssl_load_certificate(data):
-    """Load PEM/DER certificate.
-
-    :raises errors.Error:
-
-    """
-    return _pyopenssl_load(data, OpenSSL.crypto.load_certificate)
-
 
 def private_jwk_to_pyopenssl(jwk):
     """Convert private JWK to pyOpenSSL key."""
@@ -224,13 +220,13 @@ def private_jwk_to_pyopenssl(jwk):
     return OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, key_pem)
 
 
-def _get_sans_from_cert_or_req(
-        cert_or_req_str, load_func, typ=OpenSSL.crypto.FILETYPE_PEM):
-    try:
-        cert_or_req = load_func(typ, cert_or_req_str)
-    except OpenSSL.crypto.Error as error:
-        logger.exception(error)
-        raise
+def get_sans_from_pyopenssl(cert_or_req):
+    """Gets SANs from a pyopenssl object.
+
+    :param cert_or_req: Certificate or CSR.
+    :type cert_or_req: `OpenSSL.crypto.X509` or `OpenSSL.crypto.X509Req`.
+
+    """
     # pylint: disable=protected-access
     return acme_crypto_util._pyopenssl_cert_or_req_san(cert_or_req)
 
@@ -238,7 +234,7 @@ def _get_sans_from_cert_or_req(
 def get_sans_from_cert(cert, typ=OpenSSL.crypto.FILETYPE_PEM):
     """Get a list of Subject Alternative Names from a certificate.
 
-    :param str csr: Certificate (encoded).
+    :param str cert: Certificate (encoded).
     :param typ: `OpenSSL.crypto.FILETYPE_PEM` or `OpenSSL.crypto.FILETYPE_ASN1`
 
     :returns: A list of Subject Alternative Names.
@@ -261,6 +257,17 @@ def get_sans_from_csr(csr, typ=OpenSSL.crypto.FILETYPE_PEM):
     """
     return _get_sans_from_cert_or_req(
         csr, OpenSSL.crypto.load_certificate_request, typ)
+
+
+def _get_sans_from_cert_or_req(
+        cert_or_req_str, load_func, typ=OpenSSL.crypto.FILETYPE_PEM):
+    try:
+        cert_or_req = load_func(typ, cert_or_req_str)
+    except OpenSSL.crypto.Error as error:
+        logger.exception(error)
+        raise
+
+    return get_sans_from_pyopenssl(cert_or_req)
 
 
 def asn1_generalizedtime_to_dt(timestamp):

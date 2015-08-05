@@ -182,36 +182,6 @@ class Revoker(object):
 
         return certs
 
-    def _get_installed_locations(self):
-        """Get installed locations of certificates.
-
-        :returns: map from cert sha1 fingerprint to :class:`list` of vhosts
-            where the certificate is installed.
-
-        """
-        csha1_vhlist = {}
-
-        if self.installer is None:
-            return csha1_vhlist
-
-        for (cert_path, _, path) in self.installer.get_all_certs_keys():
-            try:
-                with open(cert_path) as cert_file:
-                    cert_data = cert_file.read()
-            except IOError:
-                continue
-            try:
-                cert_obj, _ = crypto_util.pyopenssl_load_certificate(cert_data)
-            except errors.Error:
-                continue
-            cert_sha1 = cert_obj.digest("sha1")
-            if cert_sha1 in csha1_vhlist:
-                csha1_vhlist[cert_sha1].append(path)
-            else:
-                csha1_vhlist[cert_sha1] = [path]
-
-        return csha1_vhlist
-
     def _safe_revoke(self, certs):
         """Confirm and revoke certificates.
 

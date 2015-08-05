@@ -6,9 +6,8 @@ import argparse
 import configobj
 import zope.component
 
-from letsencrypt import cli
 from letsencrypt import configuration
-from letesncrypt import crypto_util
+from letsencrypt import crypto_util
 from letsencrypt import errors
 from letsencrypt import interfaces
 from letsencrypt import storage
@@ -22,13 +21,10 @@ logger = logging.getLogger(__name__)
 class Manager(object):
     """Certificate Management Class, Revocation and Renewal.
 
-    :param str base: Path to base location of certificates
-
     """
-
-    def __init__(self, config=None, args=sys.argv[1:]):
-        self.cli_config = configuration.RenewerConfiguration(
-            _create_parser().parse_args(args))
+    def __init__(self, installer=None, config=None):
+        self.installer = installer
+        self.cli_config = configuration.RenewerConfiguration(config)
 
         self.csha1_vhost = self._get_installed_locations()
 
@@ -63,16 +59,17 @@ class Manager(object):
         """List trusted Let's Encrypt certificates."""
 
         while True:
-            if certs:
+            if self.certs:
                 code, selection = self.display_certs(question, action)
 
                 if code == display_util.OK:
-                    revoked_certs = self._safe_revoke([certs[selection]])
-                    # Since we are currently only revoking one cert at a time...
-                    if revoked_certs:
-                        del certs[selection]
+                    pass
+                    # revoked_certs = self._safe_revoke([self.certs[selection]])
+                    # # Since we are currently only revoking one cert at a time...
+                    # if revoked_certs:
+                    #     del self.certs[selection]
                 elif code == display_util.HELP:
-                    more_info_cert(certs[selection])
+                    more_info_cert(self.certs[selection])
                 else:
                     return
             else:
@@ -81,7 +78,7 @@ class Manager(object):
                     "certificates for this server.")
                 return
 
-    def display_certs(self, certs, question, ok_label):
+    def display_certs(self, certs, question, ok_label, extra_label=None):
         """Display the certificates in a menu for revocation.
 
         :param list certs: each is a :class:`letsencrypt.revoker.Cert`
@@ -94,16 +91,16 @@ class Manager(object):
         """
         list_choices = [
             "%s | %s | %s" % (
-                str(cert.get_cn().ljust(display_util.WIDTH - 39)),
+                str(cert.get_names().ljust(display_util.WIDTH - 39)),
                 cert.notafter().strftime("%m-%d-%y"),
-                "Installed" if cert.installed and cert.installed != ["Unknown"]
+                "Installed" if cert.get_fingerprint() in self.csha1_vhost
                 else "") for cert in certs
         ]
 
         code, tag = zope.component.getUtility(interfaces.IDisplay).menu(
             question,
             list_choices, help_label="More Info", ok_label=ok_label,
-            cancel_label="Exit")
+            extra_label=extra_label, cancel_label="Exit")
 
         return code, tag
 
@@ -167,7 +164,7 @@ def confirm_action(cert, action):
     :rtype: bool
 
     """
-    return util(interfaces.IDisplay).yesno(
+    return zope.component.getUtility(interfaces.IDisplay).yesno(
         "Are you sure you would like to {action} the following "
         "certificate:{0}{cert}This action cannot be reversed!".format(
             os.linesep, action=action, cert=cert.pretty_print()))
@@ -196,6 +193,12 @@ def success_revocation(cert):
         "You have successfully revoked the certificate for "
         "%s" % cert)
 
+def main(cli_args=sys.argv[1:]):
+    from letsencrypt_apache.configurator import ApacheConfigurator
+    print "hello"
+    manager = Manager(installer=ApacheConfigurator())
 
-if __name__ == "main":
+    manager.action_from_menu("What you looking at?", "Revoke")
+
+if __name__ == "__main__":
     main()

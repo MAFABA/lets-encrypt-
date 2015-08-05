@@ -383,11 +383,7 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
 
     def _notafterbefore(self, method, version):
         """Internal helper function for finding notbefore/notafter."""
-        if version is None:
-            target = self.current_target("cert")
-        else:
-            target = self.version("cert", version)
-        pem = open(target).read()
+        pem = open(self._get_target(version)).read()
         x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM,
                                                pem)
         i = method(x509)
@@ -421,6 +417,26 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
 
         """
         return self._notafterbefore(lambda x509: x509.get_notAfter(), version)
+
+    def _get_target(self, version=None):
+        if version is None:
+            return self.current_target("cert")
+        else:
+            return self.version("cert", version)
+
+    def fingerprint(self, alg="sha1", version=None):
+        """Get the fingerprint of the certificate.
+
+        :param str alg: Hash algorithm as supported by pyopenssl
+        :param int version: Desired version number
+
+        :returns: fingerprint
+
+        """
+        with open(self._get_target(version)) as cert_file:
+            cert_obj = crypto_util.pyopenssl_load_certificate(cert_file.read())
+
+        return cert_obj.digest(alg)
 
     def should_autodeploy(self):
         """Should this lineage now automatically deploy a newer version?
@@ -667,11 +683,7 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
         return target_version
 
     def formatted_str(self, version=None):
-        if version is None:
-            target = self.current_target("cert")
-        else:
-            target = self.version("cert", version)
-        with open(target) as cert_file:
+        with open(self._get_target(version)) as cert_file:
             cert_obj = crypto_util.pyopenssl_load_certificate(cert_file.read())
 
         string = (
@@ -681,7 +693,7 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
             "Not After: {na}{br}"
             "Signature Alg: {sig}{br}"
             "Serial: {serial}{br}"
-            "SHA1: {sha1}{br}"
+            "Fingerprint: {sha1}{br}"
         ).format(
             names=crypto_util.get_sans_from_pyopenssl(cert_obj),
             issuer=cert_obj.get_issuer(),

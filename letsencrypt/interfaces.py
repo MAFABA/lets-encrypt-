@@ -359,8 +359,8 @@ class IDisplay(zope.interface.Interface):
 
         """
 
-    def menu(message, choices,
-             ok_label="OK", cancel_label="Cancel", help_label=""):
+    def menu(message, choices, ok_label="OK", cancel_label="Cancel",
+             help_label="", extra_label=""):
         """Displays a generic menu.
 
         :param str message: message to display
@@ -370,7 +370,8 @@ class IDisplay(zope.interface.Interface):
 
         :param str ok_label: label for OK button
         :param str cancel_label: label for Cancel button
-        :param str help_label: label for Help button
+        :param str help_label: label for Help button if desired
+        :param str extra_label: label for Extra button if desired
 
         :returns: tuple of (`code`, `index`) where
             `code` - str display exit code

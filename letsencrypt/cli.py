@@ -19,6 +19,7 @@ import zope.interface.verify
 import letsencrypt
 
 from letsencrypt import account
+from letsencrypt import cert_manager
 from letsencrypt import configuration
 from letsencrypt import constants
 from letsencrypt import client
@@ -241,15 +242,23 @@ def install(args, config, plugins):
     le_client.enhance_config(domains, args.redirect)
 
 
-def revoke(args, unused_config, unused_plugins):
+def revoke(args, config, plugins):
     """Revoke a previously obtained certificate."""
-    if args.cert_path is None and args.key_path is None:
-        return "At least one of --cert-path or --key-path is required"
+    if args.cert_path is None or args.key_path is None:
+        if not (args.cert_path is None and args.key_path is None):
+            raise errors.Error(
+                "If key-path or cert-path is provided, both must be provided.")
 
+    installer = display_ops.pick_installer(
+        config, args.installer, plugins, question="Which installer "
+    "should be used for certificate revocation?")
+
+    cert_manager.Manager(installer=installer, config=config)
+    cert_manager.Manager()
     # This depends on the renewal config and cannot be completed yet.
-    zope.component.getUtility(interfaces.IDisplay).notification(
-        "Revocation is not available with the new Boulder server yet.")
-    #client.revoke(args.installer, config, plugins, args.no_confirm,
+    #zope.component.getUtility(interfaces.IDisplay).notification(
+    #    "Revocation is not available with the new Boulder server yet.")
+    # client.revoke(args.installer, config, plugins, args.no_confirm,
     #              args.cert_path, args.key_path)
 
 

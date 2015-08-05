@@ -19,7 +19,10 @@ CANCEL = "cancel"
 """Display exit code for a user canceling the display."""
 
 HELP = "help"
-"""Display exit code when for when the user requests more help."""
+"""Display exit code for when the user requests more help."""
+
+EXTRA = "extra"
+"""Display exit code for when the user selects 'extra'."""
 
 
 class NcursesDisplay(object):
@@ -180,7 +183,7 @@ class FileDisplay(object):
             raw_input("Press Enter to Continue")
 
     def menu(self, message, choices,
-             ok_label="", cancel_label="", help_label=""):
+             ok_label="", cancel_label="", help_label="", extra_label=""):
         # pylint: disable=unused-argument
         """Display a menu.
 

@@ -53,7 +53,8 @@ class NcursesDisplay(object):
         self.dialog.msgbox(message, height, width=self.width)
 
     def menu(self, message, choices,
-             ok_label="OK", cancel_label="Cancel", help_label=""):
+             ok_label="OK", cancel_label="Cancel",
+             help_label="", extra_label=""):
         """Display a menu.
 
         :param str message: title of menu
@@ -77,11 +78,14 @@ class NcursesDisplay(object):
             "cancel_label": cancel_label,
             "help_button": bool(help_label),
             "help_label": help_label,
+            "extra_button": bool(extra_label),
+            "extra_label": extra_label,
             "width": self.width,
             "height": self.height,
             "menu_height": self.height-6,
         }
 
+        print menu_options
         # Can accept either tuples or just the actual choices
         if choices and isinstance(choices[0], tuple):
             # pylint: disable=star-args

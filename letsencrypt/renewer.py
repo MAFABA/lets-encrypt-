@@ -118,7 +118,7 @@ def _paths_parser(parser):
 
 def _create_parser():
     parser = argparse.ArgumentParser()
-    #parser.add_argument("--cron", action="store_true", help="Run as cronjob.")
+    # parser.add_argument("--cron", action="store_true", help="Run as cronjob.")
     # pylint: disable=protected-access
     return _paths_parser(parser)
 

@@ -433,10 +433,26 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
         :returns: fingerprint
 
         """
-        with open(self._get_target(version)) as cert_file:
-            cert_obj = crypto_util.pyopenssl_load_certificate(cert_file.read())
+        return self.pyopenssl(version).digest(alg)
 
-        return cert_obj.digest(alg)
+    def names(self, version=None):
+        """What are the subject names of this certificate?
+
+        (If no version is specified, use the current version.)
+
+        :param int version: the desired version number
+        :returns: the subject names
+        :rtype: `list` of `str`
+
+        """
+        with open(self._get_target(version)) as f:
+            sans = crypto_util.get_sans_from_cert(f.read())
+        return sans
+
+    def pyopenssl(self, version=None):
+
+        with open(self._get_target(version)) as cert_file:
+            return crypto_util.pyopenssl_load_certificate(cert_file.read())[0]
 
     def should_autodeploy(self):
         """Should this lineage now automatically deploy a newer version?
@@ -684,9 +700,10 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
 
     def formatted_str(self, version=None):
         with open(self._get_target(version)) as cert_file:
-            cert_obj = crypto_util.pyopenssl_load_certificate(cert_file.read())
+            cert_obj = crypto_util.pyopenssl_load_certificate(
+                cert_file.read())[0]
 
-        string = (
+        return (
             "Names: {names}{br}"
             "Issuer: {issuer}{br}"
             "Not Before: {nb}{br}"

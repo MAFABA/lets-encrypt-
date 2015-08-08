@@ -193,6 +193,8 @@ def valid_privkey(privkey):
 def pyopenssl_load_certificate(data):
     """Load PEM/DER certificate.
 
+    :returns: tuple of obj and filetype
+
     :raises errors.Error:
 
     """
@@ -225,6 +227,9 @@ def get_sans_from_pyopenssl(cert_or_req):
 
     :param cert_or_req: Certificate or CSR.
     :type cert_or_req: `OpenSSL.crypto.X509` or `OpenSSL.crypto.X509Req`.
+
+    :returns: A list of SANs.
+    :rtype: list
 
     """
     # pylint: disable=protected-access

@@ -253,13 +253,23 @@ def revoke(args, config, plugins):
         config, args.installer, plugins, question="Which installer "
     "should be used for certificate revocation?")
 
-    cert_manager.Manager(installer=installer, config=config)
-    cert_manager.Manager()
+    manager = cert_manager.Manager(installer=installer, config=config)
+
+    manager.revoke()
     # This depends on the renewal config and cannot be completed yet.
-    #zope.component.getUtility(interfaces.IDisplay).notification(
+    # zope.component.getUtility(interfaces.IDisplay).notification(
     #    "Revocation is not available with the new Boulder server yet.")
     # client.revoke(args.installer, config, plugins, args.no_confirm,
     #              args.cert_path, args.key_path)
+
+
+def enhance(args, config, plugins):
+    installer = display_ops.pick_installer(
+        config, args.installer, plugins, question="Which server would "
+        "you like to enhance?")
+    domains = _find_domains(args, installer)
+    installer.enhance_config(config)
+    installer.restart()
 
 
 def rollback(args, config, plugins):
@@ -542,6 +552,12 @@ def create_parser(plugins, args):
         "security", "-r", "--redirect", action="store_true",
         help="Automatically redirect all HTTP traffic to HTTPS for the newly "
              "authenticated vhost.")
+    helpful.add(
+        "security", "--safe-upgrade", action="store_true",
+        default=flag_default("safe_upgrade"),
+        help="Add a special header to attempt to auto upgrade all resources "
+             "from HTTP to HTTPS.")
+
 
     _paths_parser(helpful)
     # _plugins_parsing should be the last thing to act upon the main

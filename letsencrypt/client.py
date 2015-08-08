@@ -380,7 +380,7 @@ class Client(object):
 
         display_ops.success_installation(domains)
 
-    def enhance_config(self, domains, redirect=None):
+    def enhance_config(self, domains, config):
         """Enhance the configuration.
 
         .. todo:: This needs to handle the specific enhancements offered by the
@@ -389,8 +389,7 @@ class Client(object):
 
         :param list domains: list of domains to configure
 
-        :param redirect: If traffic should be forwarded from HTTP to HTTPS.
-        :type redirect: bool or None
+        :param .Configuration config: Config object
 
         :raises .errors.Error: if no installer is specified in the
             client.
@@ -401,11 +400,25 @@ class Client(object):
                            "configuration to enhance.")
             raise errors.Error("No installer available")
 
-        if redirect is None:
+        if config.redirect is None:
             redirect = enhancements.ask("redirect")
 
-        if redirect:
+        if config.redirect:
             self.redirect_to_ssl(domains)
+
+        if config.safe_upgrade:
+            self.safe_upgrade_domains(domains)
+
+    def safe_upgrade_domains(self, domains):
+        # TODO: Generailze this with redirect
+        for dom in domains:
+            try:
+                self.installer.enhance(dom, "http-header", "unused")
+            except errors.PluginError:
+                logger.warn("Unable to perform safe upgrade for %s", dom)
+
+        self.installer.save("Added safe-upgrade HTTP header to configs.")
+        self.installer.restart()
 
     def redirect_to_ssl(self, domains):
         """Redirect all traffic from HTTP to HTTPS
@@ -488,7 +501,6 @@ def rollback(default_installer, checkpoints, config, plugins):
     if installer is not None:
         installer.rollback_checkpoints(checkpoints)
         installer.restart()
-
 
 def revoke(default_installer, config, plugins, no_confirm, cert, authkey):
     """Revoke certificates.

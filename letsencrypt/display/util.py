@@ -85,7 +85,6 @@ class NcursesDisplay(object):
             "menu_height": self.height-6,
         }
 
-        print menu_options
         # Can accept either tuples or just the actual choices
         if choices and isinstance(choices[0], tuple):
             # pylint: disable=star-args
@@ -110,6 +109,22 @@ class NcursesDisplay(object):
                 return code, -1
 
             return code, int(tag) - 1
+
+    def treeview(self, message, nodes, ok_label="OK", cancel_label="Cancel",
+             extra_label="", help_label=""):
+        options = {
+            "nodes": nodes,
+            "ok_label": ok_label,
+            "cancel_label": cancel_label,
+            "help_button": bool(help_label),
+            "help_label": help_label,
+            "extra_button": bool(extra_label),
+            "extra_label": extra_label,
+            "width": self.width,
+            "height": self.height,
+        }
+        return self.dialog.treeview(
+            message, **options)
 
     def input(self, message):
         """Display an input box to the user.
@@ -210,6 +225,10 @@ class FileDisplay(object):
         code, selection = self._get_valid_int_ans(len(choices))
 
         return code, selection - 1
+
+    def treeview(self, message, nodes, ok_label="OK", cancel_label="Cancel",
+             extra_label="", help_label=""):
+        raise NotImplemented
 
     def input(self, message):
         # pylint: disable=no-self-use

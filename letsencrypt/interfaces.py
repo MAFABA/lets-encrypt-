@@ -379,6 +379,26 @@ class IDisplay(zope.interface.Interface):
 
         """
 
+    def treeview(message, nodes, ok_label="OK", cancel_label="Cancel",
+             help_label="", extra_label=""):
+        """Displays a generic tree menu.
+
+        :param str message: message to display
+
+        :param nodes: Iterable of ('tag', 'item', 'status', 'depth') tuples
+        :type nodes: :class:`list` of :func:`tuple`
+
+        :param str ok_label: label for OK button
+        :param str cancel_label: label for Cancel button
+        :param str help_label: label for Help button if desired
+        :param str extra_label: label for Extra button if desired
+
+        :returns: tuple of (`code`, `index`) where
+            `code` - str display exit code
+            `index` - int index of the user's selection
+
+        """
+
     def input(message):
         """Accept input from the user.
 

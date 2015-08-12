@@ -33,8 +33,8 @@ class Manager(object):
         self.certs = self._get_renewable_certs()
 
     def revoke(self):
-        self.display_certs(
-            self.certs, "Which certificate would you like to revoke?", "Revoke")
+        self.action_from_tree(
+            "Which certificate would you like to revoke?", "Revoke")
 
     def _get_renewable_certs(self):
         certs = []
@@ -60,11 +60,12 @@ class Manager(object):
 
         return certs
 
-    def action_from_menu(self, question, action):
+    def action_from_tree(self, question, action):
         """List trusted Let's Encrypt certificates."""
 
         while True:
             if self.certs:
+                print "Certs: ", self.certs
                 code, selection = self.display_certs(question, action)
 
                 if code == display_util.OK:
@@ -73,6 +74,8 @@ class Manager(object):
                     # # Since we are currently only revoking one cert at a time...
                     # if revoked_certs:
                     #     del self.certs[selection]
+                if code == display_util.EXTRA:
+                    pass
                 elif code == display_util.HELP:
                     more_info_cert(self.certs[selection])
                 else:
@@ -94,16 +97,17 @@ class Manager(object):
         :rtype: tuple
 
         """
-        choices = []
+        nodes = []
         date_format = "%m-%d-%y"
         # 6 is for ' | ' between each
-        free_chars = display_util.WIDTH - len(date_format) - len("IR") - 6
+        # 4 is for '(*) '
+        free_chars = display_util.WIDTH - len(date_format) - len("IR") - 6 - 4
 
-        for cert in certs:
+        for i, cert in enumerate(certs):
             status = "I" if cert.get_fingerprint("sha1") in self.csha1_vhost else ""
             # TODO: Revoked
             status += "R" if False else ""
-            choices.append(
+            item = (
                 "{names:{name_len}s} | {date:{date_len}s} | {status:2s}".format(
                     names=" ".join(cert.names())[:free_chars],
                     name_len=free_chars,
@@ -112,10 +116,16 @@ class Manager(object):
                     status=status
                 )
             )
+            if i == 0:
+                nodes.append((i, item, "on", 0))
+            else:
+                nodes.append((i, item, "off", 0))
 
-        code, tag = zope.component.getUtility(interfaces.IDisplay).menu(
+        print "Nodes:", nodes
+
+        code, tag = zope.component.getUtility(interfaces.IDisplay).treeview(
             question,
-            list_choices, help_label="More Info", ok_label=ok_label,
+            nodes, help_label="More Info", ok_label=ok_label,
             extra_label=extra_label, cancel_label="Exit")
 
         return code, tag

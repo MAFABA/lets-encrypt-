@@ -52,7 +52,7 @@ The following tools are there to help you:
   before submitting a new pull request.
 
 - ``tox -e cover`` checks the test coverage only. Calling the
-  ``./tox-cover.sh`` script directly might be a bit quicker, though.
+  ``./tox.cover.sh`` script directly might be a bit quicker, though.
 
 - ``tox -e lint`` checks the style of the whole project, while
   ``pylint --rcfile=.pylintrc path`` will check a single file or
@@ -78,7 +78,7 @@ patient - it will take some time... Once its ready, you will see
 
   ./tests/boulder-integration.sh && echo OK || echo FAIL
 
-If you would like to test `lesencrypt_nginx` plugin (highly
+If you would like to test `letsencrypt_nginx` plugin (highly
 encouraged) make sure to install prerequisites as listed in
 ``tests/integration/nginx.sh``:
 

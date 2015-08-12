@@ -124,7 +124,6 @@ class ApacheConfigurator(augeas_configurator.AugeasConfigurator):
         self.vhosts = None
         self._enhance_func = {
             "redirect": self._enable_redirect,
-            "http-header": self._enable_header,
             }
 
     @property
@@ -680,7 +679,7 @@ class ApacheConfigurator(augeas_configurator.AugeasConfigurator):
     ############################################################################
     def supported_enhancements(self):  # pylint: disable=no-self-use
         """Returns currently supported enhancements."""
-        return ["redirect", "http-header"]
+        return ["redirect"]
 
     def enhance(self, domain, enhancement, options=None):
         """Enhance configuration.
@@ -706,12 +705,6 @@ class ApacheConfigurator(augeas_configurator.AugeasConfigurator):
         except errors.PluginError:
             logger.warn("Failed %s for %s", enhancement, domain)
             raise
-
-    def _enable_header(self, vhost, options):
-        """Place header in all http responses."""
-        self.parser.add_dir(
-            vhost.path, "Header",
-            ["set", "Content-Security-Policy", "upgrade-insecure-requests"])
 
     def _enable_redirect(self, ssl_vhost, unused_options):
         """Redirect all equivalent HTTP traffic to ssl_vhost.

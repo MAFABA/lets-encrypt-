@@ -406,20 +406,6 @@ class Client(object):
         if config.redirect:
             self.redirect_to_ssl(domains)
 
-        if config.safe_upgrade:
-            self.safe_upgrade_domains(domains)
-
-    def safe_upgrade_domains(self, domains):
-        # TODO: Generailze this with redirect
-        for dom in domains:
-            try:
-                self.installer.enhance(dom, "http-header", "unused")
-            except errors.PluginError:
-                logger.warn("Unable to perform safe upgrade for %s", dom)
-
-        self.installer.save("Added safe-upgrade HTTP header to configs.")
-        self.installer.restart()
-
     def redirect_to_ssl(self, domains):
         """Redirect all traffic from HTTP to HTTPS
 

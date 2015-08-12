@@ -552,12 +552,6 @@ def create_parser(plugins, args):
         "security", "-r", "--redirect", action="store_true",
         help="Automatically redirect all HTTP traffic to HTTPS for the newly "
              "authenticated vhost.")
-    helpful.add(
-        "security", "--safe-upgrade", action="store_true",
-        default=flag_default("safe_upgrade"),
-        help="Add a special header to attempt to auto upgrade all resources "
-             "from HTTP to HTTPS.")
-
 
     _paths_parser(helpful)
     # _plugins_parsing should be the last thing to act upon the main

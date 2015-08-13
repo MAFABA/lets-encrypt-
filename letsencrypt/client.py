@@ -401,7 +401,7 @@ class Client(object):
             raise errors.Error("No installer available")
 
         if config.redirect is None:
-            redirect = enhancements.ask("redirect")
+            config.redirect = enhancements.ask("redirect")
 
         if config.redirect:
             self.redirect_to_ssl(domains)

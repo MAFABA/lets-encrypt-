@@ -65,8 +65,8 @@ class Manager(object):
 
         while True:
             if self.certs:
-                print "Certs: ", self.certs
-                code, selection = self.display_certs(question, action)
+                code, selection = self.display_certs(
+                    self.certs, question, action)
 
                 if code == display_util.OK:
                     acme_client.revoke(self.certs[selection].get_pyopenssl())
@@ -89,7 +89,7 @@ class Manager(object):
     def display_certs(self, certs, question, ok_label, extra_label=""):
         """Display the certificates in a menu for revocation.
 
-        :param list certs: each is a :class:`letsencrypt.revoker.Cert`
+        :param list certs: each is a :class:`letsencrypt.storage.RenewableCert`
 
         :returns: tuple of the form (code, selection) where
             code is a display exit code
@@ -99,36 +99,58 @@ class Manager(object):
         """
         nodes = []
         date_format = "%m-%d-%y"
-        # 6 is for ' | ' between each
-        # 4 is for '(*) '
-        free_chars = display_util.WIDTH - len(date_format) - len("IR") - 6 - 4
+        # 12 is for ' (*) ' and other box spacing requirements
+        free_chars = (display_util.WIDTH - len(date_format) -
+                      len("Lineage: ") - 12)
 
         for i, cert in enumerate(certs):
-            status = "I" if cert.get_fingerprint("sha1") in self.csha1_vhost else ""
-            # TODO: Revoked
-            status += "R" if False else ""
             item = (
-                "{names:{name_len}s} | {date:{date_len}s} | {status:2s}".format(
+                "Lineage: {names:{name_len}s}".format(
                     names=" ".join(cert.names())[:free_chars],
                     name_len=free_chars,
-                    date=cert.notafter().strftime("%m-%d-%y"),
-                    date_len=len(date_format),
-                    status=status
                 )
             )
             if i == 0:
-                nodes.append((i, item, "on", 0))
+                nodes.append((str(i), item, "on", 0))
             else:
-                nodes.append((i, item, "off", 0))
+                nodes.append((str(i), item, "off", 0))
 
-        print "Nodes:", nodes
+            self.append_lineage(cert, nodes, str(i))
 
+        for node in nodes:
+            print len(node[1]), node
         code, tag = zope.component.getUtility(interfaces.IDisplay).treeview(
             question,
             nodes, help_label="More Info", ok_label=ok_label,
             extra_label=extra_label, cancel_label="Exit")
 
         return code, tag
+
+    def get_cert_status(self, cert, version):
+        status = ""
+        if cert.fingerprint("sha1", version) in self.csha1_vhost:
+            status += "Installed"
+        # TODO: Revoked
+
+        return status
+
+    def append_lineage(self, cert, nodes, l_tag):
+        # This comes back sorted..
+        versions = sorted(cert.available_versions("cert"), reverse=True)
+
+        # TODO: Work from here
+        for version in versions:
+            nodes.append((
+                l_tag + "." + str(version),
+                "Version {version} {start} - {end} | {status}".format(
+                    version=version,
+                    start=cert.notbefore().strftime("%m-%d-%y"),
+                    end=cert.notafter().strftime("%m-%d-%y"),
+                    status=self.get_cert_status(cert, version)
+                ),
+                "off",
+                1,
+            ))
 
     def _get_installed_locations(self):
         """Get installed locations of certificates.

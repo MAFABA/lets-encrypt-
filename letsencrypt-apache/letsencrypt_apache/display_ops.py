@@ -45,7 +45,8 @@ def _vhost_menu(domain, vhosts):
 
     """
     # Free characters in the line of display text (9 is for ' | ' formatting)
-    free_chars = display_util.WIDTH - len("HTTPS") - len("Enabled") - 9
+    # Additional characters are necessary for box formatting
+    free_chars = display_util.WIDTH - len("HTTPS") - len("Enabled") - 9 - 6
 
     if free_chars < 2:
         logger.debug("Display size is too small for "

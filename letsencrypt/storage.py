@@ -280,7 +280,7 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
         :param str kind: the lineage member item (
             ``cert``, ``privkey``, ``chain``, or ``fullchain``)
 
-        :returns: all of the version numbers that currently exist
+        :returns: all of the version numbers that currently exist (sorted)
         :rtype: `list` of `int`
 
         """

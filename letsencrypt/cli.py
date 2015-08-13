@@ -190,7 +190,7 @@ def run(args, config, plugins):
         return "Certificate could not be obtained"
     le_client.deploy_certificate(
         domains, lineage.privkey, lineage.cert, lineage.chain)
-    le_client.enhance_config(domains, args.redirect)
+    le_client.enhance_config(domains, config)
 
 
 def auth(args, config, plugins):

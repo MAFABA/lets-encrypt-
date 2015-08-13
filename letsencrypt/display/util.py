@@ -122,6 +122,7 @@ class NcursesDisplay(object):
             "extra_label": extra_label,
             "width": self.width,
             "height": self.height,
+            "list_height": self.height - 5
         }
         return self.dialog.treeview(
             message, **options)

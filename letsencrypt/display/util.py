@@ -229,10 +229,17 @@ class FileDisplay(object):
 
     def treeview(self, message, nodes, ok_label="OK", cancel_label="Cancel",
              extra_label="", help_label=""):
+        """Treeview for text mode.
+
+        .. todo:: Support other buttons than OK and Cancel
+
+        """
+        good_input = set()
         self._print_menu_header(message)
 
         for node in nodes:
             tag, item, _, depth = node
+            good_input.add(tag)
 
             self.outfile.write(
                 textwrap.fill("{tabs}{tag}: {item}".format(
@@ -243,7 +250,15 @@ class FileDisplay(object):
 
         self._print_menu_footer()
 
-        return self.input("Please enter in one of the tags")
+        # Get valid input
+        code, input = self.input("Please enter in a tag")
+        while code != CANCEL and input not in good_input:
+            self.outfile.write(
+                "Invalid input - Tags are listed as <tag>: <description>"
+                "%s" % os.linesep)
+            code, input = self.input("Please enter in a tag")
+
+        return code, input
 
     def input(self, message):
         # pylint: disable=no-self-use

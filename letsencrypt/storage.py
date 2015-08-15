@@ -702,6 +702,7 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
         with open(self._get_target(version)) as cert_file:
             cert_obj = crypto_util.pyopenssl_load_certificate(
                 cert_file.read())[0]
+        date_format = "%m-%d-%y"
 
         return (
             "Names: {names}{br}"
@@ -714,8 +715,8 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
         ).format(
             names=crypto_util.get_sans_from_pyopenssl(cert_obj),
             issuer=cert_obj.get_issuer(),
-            nb=self.notbefore(version),
-            na=self.notafter(version),
+            nb=self.notbefore(version).strftime(date_format),
+            na=self.notafter(version).strftime(date_format),
             sig=cert_obj.get_signature_algorithm(),
             serial=cert_obj.get_serial_number(),
             sha1=cert_obj.digest("sha1"),

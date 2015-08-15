@@ -229,7 +229,21 @@ class FileDisplay(object):
 
     def treeview(self, message, nodes, ok_label="OK", cancel_label="Cancel",
              extra_label="", help_label=""):
-        raise NotImplemented
+        self._print_menu_header(message)
+
+        for node in nodes:
+            tag, item, _, depth = node
+
+            self.outfile.write(
+                textwrap.fill("{tabs}{tag}: {item}".format(
+                    tabs=depth * "    ", tag=tag, item=item), 80))
+
+            # Keep this out of the textwrap
+            self.outfile.write(os.linesep)
+
+        self._print_menu_footer()
+
+        return self.input("Please enter in one of the tags")
 
     def input(self, message):
         # pylint: disable=no-self-use
@@ -243,8 +257,9 @@ class FileDisplay(object):
         :rtype: tuple
 
         """
+        # Textwrap will naturally strip space from sides
         ans = raw_input(
-            textwrap.fill("%s (Enter 'c' to cancel): " % message, 80))
+            textwrap.fill("%s (Enter 'c' to cancel):" % message, 80) + " ")
 
         if ans == "c" or ans == "C":
             return CANCEL, "-1"
@@ -344,6 +359,16 @@ class FileDisplay(object):
         # Transform indices to appropriate tags
         return [tags[index-1] for index in indices]
 
+    def _print_menu_header(self, message):
+        """Print menu header to the screen."""
+        # Write out the message to the user
+        self.outfile.write(
+            "{new}{msg}{new}".format(new=os.linesep, msg=message))
+        self._print_menu_footer()
+
+    def _print_menu_footer(self):
+        self.outfile.write(("-" * 79) + os.linesep)
+
     def _print_menu(self, message, choices):
         """Print a menu on the screen.
 
@@ -357,11 +382,7 @@ class FileDisplay(object):
         if choices and isinstance(choices[0], tuple):
             choices = ["%s - %s" % (c[0], c[1]) for c in choices]
 
-        # Write out the message to the user
-        self.outfile.write(
-            "{new}{msg}{new}".format(new=os.linesep, msg=message))
-        side_frame = ("-" * 79) + os.linesep
-        self.outfile.write(side_frame)
+        self._print_menu_header(message)
 
         # Write out the menu choices
         for i, desc in enumerate(choices, 1):
@@ -371,7 +392,7 @@ class FileDisplay(object):
             # Keep this outside of the textwrap
             self.outfile.write(os.linesep)
 
-        self.outfile.write(side_frame)
+        self._print_menu_footer()
 
     def _wrap_lines(self, msg):  # pylint: disable=no-self-use
         """Format lines nicely to 80 chars.

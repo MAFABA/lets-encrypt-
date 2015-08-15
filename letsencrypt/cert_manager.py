@@ -21,9 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class Manager(object):
-    """Certificate Management Class, Revocation and Renewal.
-
-    """
+    """Certificate Management Class, Revocation and Renewal."""
     def __init__(self, installer=None, config=None):
         self.installer = installer
         self.cli_config = configuration.RenewerConfiguration(config)
@@ -69,15 +67,13 @@ class Manager(object):
                     self.certs, question, action)
 
                 if code == display_util.OK:
-                    acme_client.revoke(self.certs[selection].get_pyopenssl())
-                    # revoked_certs = self._safe_revoke([self.certs[selection]])
-                    # # Since we are currently only revoking one cert at a time...
-                    # if revoked_certs:
-                    #     del self.certs[selection]
+                    print selection
+                    # acme_client.revoke(self.certs[selection].get_pyopenssl())
                 if code == display_util.EXTRA:
-                    pass
+                    print selection
                 elif code == display_util.HELP:
-                    more_info_cert(self.certs[selection])
+                    print selection
+                    self._more_info(selection)
                 else:
                     return
             else:
@@ -85,6 +81,18 @@ class Manager(object):
                     "There are not any trusted Let's Encrypt "
                     "certificates for this server.")
                 return
+
+    def _selected_lineage(self, selection):  # pylint: disable=no-self-use
+        return not "." in selection
+
+    def _lineage_version(self, selection):
+        """Returns a tuple containing the lineage and version number."""
+        if self._selected_lineage(selection):
+            raise errors.Error("Lineage was selected, not a certificate.")
+
+        parts = selection.partition(".")
+        return (self.certs[int(parts[0])], int(parts[2]))
+
 
     def display_certs(self, certs, question, ok_label, extra_label=""):
         """Display the certificates in a menu for revocation.
@@ -98,14 +106,12 @@ class Manager(object):
 
         """
         nodes = []
-        date_format = "%m-%d-%y"
         # 12 is for ' (*) ' and other box spacing requirements
-        free_chars = (display_util.WIDTH - len(date_format) -
-                      len("Lineage: ") - 12)
+        free_chars = display_util.WIDTH - 12
 
         for i, cert in enumerate(certs):
             item = (
-                "Lineage: {names:{name_len}s}".format(
+                "{names:{name_len}s}".format(
                     names=" ".join(cert.names())[:free_chars],
                     name_len=free_chars,
                 )
@@ -117,8 +123,6 @@ class Manager(object):
 
             self.append_lineage(cert, nodes, str(i))
 
-        for node in nodes:
-            print len(node[1]), node
         code, tag = zope.component.getUtility(interfaces.IDisplay).treeview(
             question,
             nodes, help_label="More Info", ok_label=ok_label,
@@ -182,6 +186,35 @@ class Manager(object):
 
         return csha1_vhlist
 
+    def _more_info(self, selection):
+        """Displays more info about the cert.
+
+        :param str selection: Selection from display_certs
+
+        """
+        if self._selected_lineage(selection):
+            info = self._more_info_lineage(selection)
+        else:
+            info = self._more_info_cert(selection)
+
+        zope.component.getUtility(interfaces.IDisplay).notification(
+            info, height=display_util.HEIGHT)
+
+    def _more_info_lineage(self, selection):
+        lineage = self.certs[int(selection)]
+        cert_str = []
+        for version in sorted(lineage.available_versions("cert"), reverse=True):
+            cert_str.append(
+                "Certificate {version}:{br}{cert_info}".format(
+                    version=version, br=os.linesep,
+                    cert_info=lineage.formatted_str(version)))
+        return "Lineage Information:{br}{certs}".format(
+            br=os.linesep, certs=os.linesep.join(cert_str))
+
+    def _more_info_cert(self, selection):
+        lineage, version = self._lineage_version(selection)
+        return "Certificate Information:{br}{cert_info}".format(
+            br=os.linesep, cert_info=lineage.formatted_str(version))
 
 def _paths_parser(parser):
     add = parser.add_argument_group("paths").add_argument
@@ -216,18 +249,6 @@ def confirm_action(cert, action):
         "Are you sure you would like to {action} the following "
         "certificate:{0}{cert}This action cannot be reversed!".format(
             os.linesep, action=action, cert=cert.pretty_print()))
-
-
-def more_info_cert(cert):
-    """Displays more info about the cert.
-
-    :param dict cert: cert dict used throughout revoker.py
-
-    """
-    zope.component.getUtility(interfaces.IDisplay).notification(
-        "Certificate Information:{0}{1}".format(
-            os.linesep, str(cert)),
-        height=display_util.HEIGHT)
 
 
 def success_revocation(cert):

@@ -2,6 +2,7 @@
 import datetime
 import os
 import re
+import shutil
 import time
 
 import configobj
@@ -697,6 +698,30 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
         with open(target["fullchain"], "w") as f:
             f.write(new_cert + new_chain)
         return target_version
+
+    def delete(self):
+        """Delete all data associated with RenewableCert."""
+        for kind in ALL_FOUR:
+            versions = self.available_versions(kind)
+            if kind != "privkey":
+                for version in versions:
+                    os.remove(self.version(kind, version))
+            else:
+                for version in versions:
+                    le_util.run_script(
+                        [self.cli_config.delete_tool, "--remove",
+                         self.version(kind, version)])
+
+        b_name = os.path.splitext(os.path.basename(self.configfile.filename))[0]
+
+        os.removedirs(os.path.join(self.cli_config.archive_dir, b_name))
+        # Residule broken symlinks remain here...
+        shutil.rmtree(os.path.join(self.cli_config.live_dir, b_name))
+
+        # Finally remove original configuration file
+        os.remove(os.path.join(
+            self.cli_config.renewal_configs_dir,
+            os.path.basename(self.configfile.filename)))
 
     def formatted_str(self, version=None):
         with open(self._get_target(version)) as cert_file:

@@ -1,11 +1,12 @@
 import logging
 import os
-import sys
+
 
 import argparse
 import configobj
 import zope.component
 
+from acme import errors as acme_errors
 from acme import client as acme_client
 
 from letsencrypt import configuration
@@ -32,7 +33,49 @@ class Manager(object):
 
     def revoke(self):
         self.action_from_tree(
-            "Which certificate would you like to revoke?", "Revoke")
+            "Which certificate would you like to revoke?",
+            "Revoke", self._revoke_action)
+
+    def _revoke_action(self, selection):
+        """Revoke a lineage or certificate."""
+        if self._selected_lineage(selection):
+            self._revoke_lineage(self.certs[int(selection)])
+        else:
+            cert, version = self._lineage_version(selection)
+            if confirm_revocation(cert, version):
+                self._revoke_cert(cert, version)
+                success_revocation(cert, version)
+
+    def _revoke_cert(self, cert, version):
+        try:
+            acme_client.revoke(
+                cert.version("cert", version),
+                cert.version("privkey", version))
+        except acme_errors.ClientError:
+            logger.error(
+                "Unable to revoke certificate at %s",
+                cert.version("cert", version))
+            raise errors.Error("Failed revocation")
+
+    def _revoke_lineage(self, cert):
+        if self._revoke_lineage_confirmation(cert):
+            for version in cert.available_versions("cert"):
+                self._revoke_cert(cert, version)
+
+    def _revoke_lineage_confirmation(self, cert):
+        info = self._more_info_lineage(cert)
+        return zope.component.getUtility(interfaces.IDisplay).yesno(
+            "Are you sure you would like to revoke all of valid certificates in"
+            "this lineage?{br}{info}".format(br=os.linesep, info=info))
+
+    def _delete(self, selection):
+        if self._selected_lineage(selection):
+            self.certs[int(selection)].delete()
+            del(self.certs[int(selection)])
+        else:
+            zope.component.getUtility(interfaces.IDisplay).notification(
+                "Only deleting full lineages is available at this time."
+            )
 
     def _get_renewable_certs(self):
         certs = []
@@ -58,7 +101,7 @@ class Manager(object):
 
         return certs
 
-    def action_from_tree(self, question, action):
+    def action_from_tree(self, question, action, action_func):
         """List trusted Let's Encrypt certificates."""
 
         while True:
@@ -68,9 +111,10 @@ class Manager(object):
 
                 if code == display_util.OK:
                     print selection
-                    # acme_client.revoke(self.certs[selection].get_pyopenssl())
+                    action_func(selection)
                 if code == display_util.EXTRA:
                     print selection
+                    self._delete(selection)
                 elif code == display_util.HELP:
                     print selection
                     self._more_info(selection)
@@ -94,7 +138,7 @@ class Manager(object):
         return (self.certs[int(parts[0])], int(parts[2]))
 
 
-    def display_certs(self, certs, question, ok_label, extra_label=""):
+    def display_certs(self, certs, question, ok_label, extra_label="Delete"):
         """Display the certificates in a menu for revocation.
 
         :param list certs: each is a :class:`letsencrypt.storage.RenewableCert`
@@ -139,10 +183,8 @@ class Manager(object):
         return status
 
     def append_lineage(self, cert, nodes, l_tag):
-        # This comes back sorted..
         versions = sorted(cert.available_versions("cert"), reverse=True)
 
-        # TODO: Work from here
         for version in versions:
             nodes.append((
                 l_tag + "." + str(version),
@@ -193,15 +235,15 @@ class Manager(object):
 
         """
         if self._selected_lineage(selection):
-            info = self._more_info_lineage(selection)
+            info = self._more_info_lineage(self.certs[int(selection)])
         else:
-            info = self._more_info_cert(selection)
+            lineage, version = self._lineage_version(selection)
+            info = self._more_info_cert(lineage, version)
 
         zope.component.getUtility(interfaces.IDisplay).notification(
             info, height=display_util.HEIGHT)
 
-    def _more_info_lineage(self, selection):
-        lineage = self.certs[int(selection)]
+    def _more_info_lineage(self, lineage):
         cert_str = []
         for version in sorted(lineage.available_versions("cert"), reverse=True):
             cert_str.append(
@@ -211,8 +253,7 @@ class Manager(object):
         return "Lineage Information:{br}{certs}".format(
             br=os.linesep, certs=os.linesep.join(cert_str))
 
-    def _more_info_cert(self, selection):
-        lineage, version = self._lineage_version(selection)
+    def _more_info_cert(self, lineage, version):
         return "Certificate Information:{br}{cert_info}".format(
             br=os.linesep, cert_info=lineage.formatted_str(version))
 
@@ -235,10 +276,10 @@ def _create_parser():
     return _paths_parser(parser)
 
 
-def confirm_action(cert, action):
+def confirm_revocation(cert, version):
     """Confirm revocation screen.
 
-    :param cert: certificate object
+    :param cert: Renewable certificate object
     :type cert: :class:
 
     :returns: True if user would like to revoke, False otherwise
@@ -246,9 +287,9 @@ def confirm_action(cert, action):
 
     """
     return zope.component.getUtility(interfaces.IDisplay).yesno(
-        "Are you sure you would like to {action} the following "
+        "Are you sure you would like to revoke the following "
         "certificate:{0}{cert}This action cannot be reversed!".format(
-            os.linesep, action=action, cert=cert.pretty_print()))
+            os.linesep, cert=cert.formatted_str(version)))
 
 
 def success_revocation(cert):

@@ -534,7 +534,7 @@ def create_parser(plugins, args):
         "testing", "--no-verify-ssl", action="store_true",
         help=config_help("no_verify_ssl"),
         default=flag_default("no_verify_ssl"))
-    helpful.add(  # TODO: apache plugin does NOT respect it (#479)
+    helpful.add(
         "testing", "--dvsni-port", type=int, default=flag_default("dvsni_port"),
         help=config_help("dvsni_port"))
     helpful.add("testing", "--simple-http-port", type=int,
@@ -552,6 +552,10 @@ def create_parser(plugins, args):
         "security", "-r", "--redirect", action="store_true",
         help="Automatically redirect all HTTP traffic to HTTPS for the newly "
              "authenticated vhost.")
+    # Is there a better place for this?
+    helpful.add(
+        "security", "--delete-tool", default=flag_default("delete_tool"),
+        help="Tool used to delete all sensitive files.")
 
     _paths_parser(helpful)
     # _plugins_parsing should be the last thing to act upon the main
@@ -595,7 +599,7 @@ def _create_subparsers(helpful):
         "--cert-path", required=True, help="Path to a certificate that "
         "is going to be installed.")
     parser_install.add_argument(
-        "--key-path", required=True, help="Accompynying private key")
+        "--key-path", required=True, help="Accompanying private key")
     parser_install.add_argument(
         "--chain-path", help="Accompanying path to a certificate chain.")
     parser_revoke.add_argument(

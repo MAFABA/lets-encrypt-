@@ -24,6 +24,7 @@ CLI_DEFAULTS = dict(
     logs_dir="/var/log/letsencrypt",
     no_verify_ssl=False,
     dvsni_port=challenges.DVSNI.PORT,
+    delete_tool="shred",
 
     auth_cert_path="./cert.pem",
     auth_chain_path="./chain.pem",

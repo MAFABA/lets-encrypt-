@@ -1,7 +1,6 @@
 import logging
 import os
 
-
 import argparse
 import configobj
 import zope.component
@@ -32,13 +31,14 @@ class Manager(object):
         self.certs = self._get_renewable_certs()
 
     def revoke(self):
+        """Main command to revoke a certificate with a menu."""
         self.action_from_tree(
             "Which certificate would you like to revoke?",
-            "Revoke", self._revoke_action)
+            ("Revoke", self._revoke_action))
 
     def _revoke_action(self, selection):
         """Revoke a lineage or certificate."""
-        if self._selected_lineage(selection):
+        if self._is_lineage(selection):
             self._revoke_lineage(self.certs[int(selection)])
         else:
             cert, version = self._lineage_version(selection)
@@ -48,9 +48,8 @@ class Manager(object):
 
     def _revoke_cert(self, cert, version):
         try:
-            acme_client.revoke(
-                cert.version("cert", version),
-                cert.version("privkey", version))
+            # Note: this only works if the cert was issued under the account.
+            acme_client.revoke(cert.pyopenssl(version))
         except acme_errors.ClientError:
             logger.error(
                 "Unable to revoke certificate at %s",
@@ -69,7 +68,7 @@ class Manager(object):
             "this lineage?{br}{info}".format(br=os.linesep, info=info))
 
     def _delete(self, selection):
-        if self._selected_lineage(selection):
+        if self._is_lineage(selection):
             self.certs[int(selection)].delete()
             del(self.certs[int(selection)])
         else:
@@ -78,6 +77,7 @@ class Manager(object):
             )
 
     def _get_renewable_certs(self):
+        """Get all of the available renewable certs."""
         certs = []
         if not os.path.isdir(self.cli_config.renewal_configs_dir):
             return certs
@@ -101,22 +101,23 @@ class Manager(object):
 
         return certs
 
-    def action_from_tree(self, question, action, action_func):
-        """List trusted Let's Encrypt certificates."""
+    def action_from_tree(self, question, action):
+        """List trusted Let's Encrypt certificates.
+
+        :param tuple action: ('str', func)
+
+        """
 
         while True:
             if self.certs:
                 code, selection = self.display_certs(
-                    self.certs, question, action)
+                    self.certs, question, action[0])
 
                 if code == display_util.OK:
-                    print selection
-                    action_func(selection)
+                    action[1](selection)
                 if code == display_util.EXTRA:
-                    print selection
                     self._delete(selection)
                 elif code == display_util.HELP:
-                    print selection
                     self._more_info(selection)
                 else:
                     return
@@ -126,12 +127,13 @@ class Manager(object):
                     "certificates for this server.")
                 return
 
-    def _selected_lineage(self, selection):  # pylint: disable=no-self-use
+    def _is_lineage(self, selection):  # pylint: disable=no-self-use
+        """Returns true if selection str is a lineage selection."""
         return not "." in selection
 
     def _lineage_version(self, selection):
         """Returns a tuple containing the lineage and version number."""
-        if self._selected_lineage(selection):
+        if self._is_lineage(selection):
             raise errors.Error("Lineage was selected, not a certificate.")
 
         parts = selection.partition(".")
@@ -142,10 +144,13 @@ class Manager(object):
         """Display the certificates in a menu for revocation.
 
         :param list certs: each is a :class:`letsencrypt.storage.RenewableCert`
+        :param str question: Question to display
+        :param str ok_label: Label of ok button
+        :param str extra_label: Label of additional button
 
-        :returns: tuple of the form (code, selection) where
+        :returns: tuple of the form (`code`, `selection`) where
             code is a display exit code
-            selection is the user's int selection
+            selection is the user's str selection tag
         :rtype: tuple
 
         """
@@ -175,6 +180,7 @@ class Manager(object):
         return code, tag
 
     def get_cert_status(self, cert, version):
+        """Return relavant cert status in string form."""
         status = ""
         if cert.fingerprint("sha1", version) in self.csha1_vhost:
             status += "Installed"
@@ -183,6 +189,13 @@ class Manager(object):
         return status
 
     def append_lineage(self, cert, nodes, l_tag):
+        """Appends the certificate lineage to nodes.
+
+        :param .RenewableCert cert: Certificate lineage object
+        :param list nodes: List of python dialog nodes
+        :param str l_tag: Tag used for lineage node.
+
+        """
         versions = sorted(cert.available_versions("cert"), reverse=True)
 
         for version in versions:
@@ -234,7 +247,7 @@ class Manager(object):
         :param str selection: Selection from display_certs
 
         """
-        if self._selected_lineage(selection):
+        if self._is_lineage(selection):
             info = self._more_info_lineage(self.certs[int(selection)])
         else:
             lineage, version = self._lineage_version(selection)

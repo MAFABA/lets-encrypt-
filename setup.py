@@ -52,7 +52,7 @@ if sys.version_info < (2, 7):
         'mock<1.1.0',
     ])
 else:
-    install_requires.append('mock')
+    install_requires.append('mock<1.1.0')
 
 dev_extras = [
     # Pin astroid==1.3.5, pylint==1.4.2 as a workaround for #289

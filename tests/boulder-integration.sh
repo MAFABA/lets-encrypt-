@@ -9,7 +9,8 @@
 #           script defaults to monolithic.
 #
 # Note: this script is called by Boulder integration test suite!
-
+cd $(dirname $0)/..
+. venv/bin/activate
 . ./tests/integration/_common.sh
 export PATH="/usr/sbin:$PATH"  # /usr/sbin/nginx
 

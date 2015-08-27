@@ -5,10 +5,7 @@ from setuptools import find_packages
 
 
 install_requires = []
-if sys.version_info < (2, 7):
-    install_requires.append('mock<1.1.0')
-else:
-    install_requires.append('mock')
+install_requires.append('mock<1.1.0')
 
 setup(
     name='letshelp-letsencrypt',

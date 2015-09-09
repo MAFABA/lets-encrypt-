@@ -52,7 +52,8 @@ The following tools are there to help you:
   before submitting a new pull request.
 
 - ``tox -e cover`` checks the test coverage only. Calling the
-  ``./tox.cover.sh`` script directly might be a bit quicker, though.
+  ``./tox.cover.sh`` script directly (or even ``./tox.cover.sh $pkg1
+  $pkg2 ...`` for any subpackages) might be a bit quicker, though.
 
 - ``tox -e lint`` checks the style of the whole project, while
   ``pylint --rcfile=.pylintrc path`` will check a single file or
@@ -67,7 +68,7 @@ The following tools are there to help you:
 Integration
 ~~~~~~~~~~~
 
-First, install `Go`_ 1.4 and start Boulder_, an ACME CA server::
+First, install `Go`_ 1.5 and start Boulder_, an ACME CA server::
 
   ./tests/boulder-start.sh
 
@@ -82,7 +83,7 @@ If you would like to test `letsencrypt_nginx` plugin (highly
 encouraged) make sure to install prerequisites as listed in
 ``tests/integration/nginx.sh``:
 
-.. include:: ../tests/integration/nginx.sh
+.. include:: ../letsencrypt-nginx/tests/boulder-integration.sh
    :start-line: 1
    :end-line: 2
    :code: shell

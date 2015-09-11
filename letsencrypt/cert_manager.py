@@ -306,8 +306,8 @@ def revoked_status(cert, version):
         ["openssl", "x509", "-in", cert.version("cert", version),
         "-noout", "-ocsp_uri"])
 
-    host = url.partition("://")[2]
-
+    url = url.rstrip()
+    host = url.partition("://")[2].rstrip("/")
     if not host:
         raise errors.Error(
             "Unable to get OCSP host from cert, url - %s", url)
@@ -320,7 +320,7 @@ def revoked_status(cert, version):
         "-issuer", cert.version("chain", version),
         "-cert", cert.version("cert", version),
         "-url", url,
-        "-CAFile", cert.version("chain", version)])
+        "-CAfile", cert.version("chain", version)])
 
     return _translate_ocsp_query(cert, version, output)
 

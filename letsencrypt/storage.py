@@ -225,7 +225,7 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
         target = os.readlink(link)
         if not os.path.isabs(target):
             target = os.path.join(os.path.dirname(link), target)
-        return target
+        return os.path.abspath(target)
 
     def current_version(self, kind):
         """Returns numerical version of the specified item.
@@ -270,8 +270,7 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
         if kind not in ALL_FOUR:
             raise errors.CertStorageError("unknown kind of item")
         where = os.path.dirname(self.current_target(kind))
-        return os.path.abspath(
-            os.path.join(where, "{0}{1}.pem".format(kind, version)))
+        return os.path.join(where, "{0}{1}.pem".format(kind, version))
 
     def available_versions(self, kind):
         """Which alternative versions of the specified kind of item exist?
@@ -340,7 +339,7 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
 
         :returns: ``True`` if there is a complete version of this
             lineage with a larger version number than the current
-            version, and ``False`` otherwis
+            version, and ``False`` otherwise
         :rtype: bool
 
         """

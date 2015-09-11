@@ -460,7 +460,6 @@ class IValidator(zope.interface.Interface):
 
         """
 
-
     def hsts(name):
         """Verify HSTS header is enabled
 

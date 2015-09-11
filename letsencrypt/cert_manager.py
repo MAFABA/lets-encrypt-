@@ -12,6 +12,7 @@ from letsencrypt import configuration
 from letsencrypt import crypto_util
 from letsencrypt import errors
 from letsencrypt import interfaces
+from letsencrypt import le_util
 from letsencrypt import storage
 
 from letsencrypt.display import util as display_util
@@ -33,8 +34,8 @@ class Manager(object):
     def revoke(self):
         """Main command to revoke a certificate with a menu."""
         self.action_from_tree(
-            "Which certificate would you like to revoke?",
-            ("Revoke", self._revoke_action))
+            "Which certificate(s) would you like to revoke?",
+            ("Revoke", self._revoke_action), ("Delete", self._delete_action))
 
     def _revoke_action(self, selection):
         """Revoke a lineage or certificate."""
@@ -67,7 +68,7 @@ class Manager(object):
             "Are you sure you would like to revoke all of valid certificates in"
             "this lineage?{br}{info}".format(br=os.linesep, info=info))
 
-    def _delete(self, selection):
+    def _delete_action(self, selection):
         if self._is_lineage(selection):
             self.certs[int(selection)].delete()
             del(self.certs[int(selection)])
@@ -101,13 +102,17 @@ class Manager(object):
 
         return certs
 
-    def action_from_tree(self, question, action):
+    def action_from_tree(self, question, action, action2):
         """List trusted Let's Encrypt certificates.
 
+        There is a notion that this exact same display can be used for other
+        actions... renewal, more complex actions? I apologize for the complexity
+        if this code is never used for anything else.
+
         :param tuple action: ('str', func)
+        :param tuple action2: ('str', func)
 
         """
-
         while True:
             if self.certs:
                 code, selection = self.display_certs(
@@ -116,8 +121,9 @@ class Manager(object):
                 if code == display_util.OK:
                     action[1](selection)
                 if code == display_util.EXTRA:
-                    self._delete(selection)
+                    action[2](selection)
                 elif code == display_util.HELP:
+                    # This is less likely to need to be configured.
                     self._more_info(selection)
                 else:
                     return
@@ -154,6 +160,8 @@ class Manager(object):
         :rtype: tuple
 
         """
+        # nodes - where each is a (tag, item, status, depth) tuple
+        # `depth` = how many tabs in
         nodes = []
         # 12 is for ' (*) ' and other box spacing requirements
         free_chars = display_util.WIDTH - 12
@@ -179,12 +187,13 @@ class Manager(object):
 
         return code, tag
 
-    def get_cert_status(self, cert, version):
-        """Return relavant cert status in string form."""
-        status = ""
+    def installed_status(self, cert, version):
+        """Return relevant cert status in string form."""
+        msg = "Installed"
         if cert.fingerprint("sha1", version) in self.csha1_vhost:
-            status += "Installed"
-        # TODO: Revoked
+            status = msg
+        else:
+            status = " " * len(msg)
 
         return status
 
@@ -201,11 +210,12 @@ class Manager(object):
         for version in versions:
             nodes.append((
                 l_tag + "." + str(version),
-                "Version {version} {start} - {end} | {status}".format(
+                "v.{version} {start} - {end} | {install} | {revoke}".format(
                     version=version,
                     start=cert.notbefore().strftime("%m-%d-%y"),
                     end=cert.notafter().strftime("%m-%d-%y"),
-                    status=self.get_cert_status(cert, version)
+                    install=self.installed_status(cert, version),
+                    revoke=revoked_status(cert, version)
                 ),
                 "off",
                 1,
@@ -287,6 +297,45 @@ def _create_parser():
     #parser.add_argument("--cron", action="store_true", help="Run as cronjob.")
     # pylint: disable=protected-access
     return _paths_parser(parser)
+
+
+def revoked_status(cert, version):
+    """Get revoked status for a particular cert version."""
+    print "This is what I am working with:", cert.version("cert", version)
+    url, _ = le_util.run_script(
+        ["openssl", "x509", "-in", cert.version("cert", version),
+        "-noout", "-ocsp_uri"])
+
+    host = url.partition("://")[2]
+
+    if not host:
+        raise errors.Error(
+            "Unable to get OCSP host from cert, url - %s", url)
+
+    # This was a PITA...
+    # Thanks to "Bulletproof SSL and TLS - Ivan Ristic" for helping me out
+    output, _ = le_util.run_script(
+        ["openssl", "ocsp",
+        "-no_nonce", "-header", "Host", host,
+        "-issuer", cert.version("chain", version),
+        "-cert", cert.version("cert", version),
+        "-url", url,
+        "-CAFile", cert.version("chain", version)])
+
+    return _translate_ocsp_query(cert, version, output)
+
+
+def _translate_ocsp_query(cert, version, ocsp_output):
+    """Returns a label string out of the query."""
+    if not "Response verify OK":
+        return "Revocation Unknown"
+    if cert.version("cert", version) + ": good" in ocsp_output:
+        return ""
+    elif cert.version("cert", version) + ": revoked" in ocsp_output:
+        return "Revoked"
+    else:
+        raise errors.Error(
+            "Unable to properly parse ocsp output: %s", ocsp_output)
 
 
 def confirm_revocation(cert, version):

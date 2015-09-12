@@ -119,7 +119,7 @@ class Manager(object):
         if version is None:
             info = self._more_info_lineage(cert)
             return zope.component.getUtility(interfaces.IDisplay).yesno(
-                "Are you sure you would like to revoke all of valid certificates"
+                "Are you sure you would like to revoke all of valid certificates "
                 "in this lineage?{br}{info}".format(br=os.linesep, info=info))
         else:
             return zope.component.getUtility(interfaces.IDisplay).yesno(
@@ -128,13 +128,37 @@ class Manager(object):
                     os.linesep, cert=cert.formatted_str(version)))
 
     def _delete_action(self, selection):
+        ok_delete = True
         if self._is_lineage(selection):
-            self.certs[int(selection)].delete()
-            del(self.certs[int(selection)])
+
+            if self._approved_delete(self.certs[int(selection)]):
+                self.certs[int(selection)].delete()
+                del(self.certs[int(selection)])
         else:
             zope.component.getUtility(interfaces.IDisplay).notification(
                 "Only deleting full lineages is available at this time."
             )
+
+    def _lineage_no_longer_valid(self, cert):
+        any(not self.cpath_validity[cert.version("cert", version)]
+            for version in cert.available_versions("cert"))
+
+    def _approved_delete(self, cert):
+        """Verifies that the user isn't accidently deleting valid certs.
+
+        This verifies known expired and known revoked. An unknown status will
+        not prompt the user.
+
+        """
+        if any(not self.cpath_validity[cert.version("cert", version)]
+               for version in cert.available_versions("cert")):
+            return zope.component.getUtility(interfaces.IDisplay).yesno(
+                "There are valid certificates in this lineage. If you delete "
+                "the certificate you may have difficulty revoking it if "
+                "necessary later.{0} Are you sure you want to delete this "
+                "lineage?".format(os.linesep))
+
+        return True
 
     def _get_renewable_certs(self):
         """Get all of the available renewable certs."""

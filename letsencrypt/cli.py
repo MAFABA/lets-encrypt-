@@ -247,7 +247,11 @@ def install(args, config, plugins):
 
 
 def revoke(args, config, plugins):
-    """Revoke a previously obtained certificate."""
+    """Revoke a previously obtained certificate.
+
+    :param .disco.PluginsRegistry plugins: All available plugins
+
+    """
     if args.key_path is not None or args.cert_path is not None:
         if args.cert_path is None:
             raise errors.Error(
@@ -268,12 +272,7 @@ def revoke(args, config, plugins):
             args.cert_path[1])[0]))
 
     else:
-        installer = display_ops.pick_installer(
-            config, args.installer, plugins,
-            question="Which installer should be used for certificate revocation?")
-
-        manager = cert_manager.Manager(installer=installer, config=config)
-
+        manager = cert_manager.Manager(plugins, config)
         manager.revoke()
     
 

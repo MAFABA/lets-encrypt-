@@ -723,10 +723,10 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
             os.path.basename(self.configfile.filename)))
 
     def formatted_str(self, version=None):
-        with open(self._get_target(version)) as cert_file:
-            cert_obj = crypto_util.pyopenssl_load_certificate(
-                cert_file.read())[0]
+        cert_obj = self.pyopenssl(version)
         date_format = "%m-%d-%y"
+        # TODO: Make an appropriate string out of the issuer
+        issuer = cert_obj.get_issuer()
 
         return (
             "Names: {names}{br}"
@@ -737,8 +737,8 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
             "Serial: {serial}{br}"
             "Fingerprint: {sha1}{br}"
         ).format(
-            names=crypto_util.get_sans_from_pyopenssl(cert_obj),
-            issuer=cert_obj.get_issuer(),
+            names=" ".join(crypto_util.get_sans_from_pyopenssl(cert_obj)),
+            issuer=issuer.commonName,
             nb=self.notbefore(version).strftime(date_format),
             na=self.notafter(version).strftime(date_format),
             sig=cert_obj.get_signature_algorithm(),

@@ -1,13 +1,16 @@
+import datetime
 import logging
 import os
 
-import argparse
 import configobj
+import pytz
 import zope.component
 
 from acme import errors as acme_errors
 from acme import client as acme_client
+from acme import jose
 
+from letsencrypt import account
 from letsencrypt import configuration
 from letsencrypt import crypto_util
 from letsencrypt import errors
@@ -21,15 +24,33 @@ from letsencrypt.display import util as display_util
 logger = logging.getLogger(__name__)
 
 
+REV_LABEL = "**Revoked**"
+EXP_LABEL = "**Expired**"
+
+INSTALL_LABEL = "(Installed)"
+
+
 class Manager(object):
-    """Certificate Management Class, Revocation and Renewal."""
-    def __init__(self, installer=None, config=None):
-        self.installer = installer
-        self.cli_config = configuration.RenewerConfiguration(config)
+    """Certificate Management Class, Revocation and Renewal.
+
+    :ivar .disco.PluginsRegistry installers: Available (Working + Misconfigured)
+        installers
+    :ivar dict csha1_vhost: Mapping from cert_sha1 to installed location
+    :ivar dict cpath_validity: Mapping from cert_path to validity_label ('str')
+
+    """
+    def __init__(self, plugins, config):
+        self.installers = _extract_avail_installers(plugins, config)
+        self.config = configuration.RenewerConfiguration(config)
 
         self.csha1_vhost = self._get_installed_locations()
 
         self.certs = self._get_renewable_certs()
+
+        # Path was chosen instead of sha1 because, we are only checking certs
+        # in our immediate database.  There is no fear, as in installed case,
+        # where we may not recognize the path, but it is the same cert.
+        self.cpath_validity = _get_validity_info(self.certs)
 
     def revoke(self):
         """Main command to revoke a certificate with a menu."""
@@ -40,33 +61,71 @@ class Manager(object):
     def _revoke_action(self, selection):
         """Revoke a lineage or certificate."""
         if self._is_lineage(selection):
-            self._revoke_lineage(self.certs[int(selection)])
+            cert = self.certs[int(selection)]
+            if self.confirm_revocation(cert):
+                for version in cert.available_versions("cert"):
+                    self._revoke_cert(cert, version)
+                success_revocation(cert)
         else:
             cert, version = self._lineage_version(selection)
-            if confirm_revocation(cert, version):
+
+            if self.confirm_revocation(cert, version):
                 self._revoke_cert(cert, version)
                 success_revocation(cert, version)
 
     def _revoke_cert(self, cert, version):
+        if self.cpath_validity[cert.version("cert", version)]:
+            logger.debug("Certificate is already revoked.")
+            return
+        acme = self._get_acme_client_for_revoc(cert, version)
         try:
-            # Note: this only works if the cert was issued under the account.
-            acme_client.revoke(cert.pyopenssl(version))
+            acme.revoke(jose.ComparableX509(cert.pyopenssl(version)))
         except acme_errors.ClientError:
             logger.error(
                 "Unable to revoke certificate at %s",
                 cert.version("cert", version))
             raise errors.Error("Failed revocation")
+        else:
+            self.cpath_validity[cert.version("cert", version)] = REV_LABEL
 
-    def _revoke_lineage(self, cert):
-        if self._revoke_lineage_confirmation(cert):
-            for version in cert.available_versions("cert"):
-                self._revoke_cert(cert, version)
+    def _get_acme_client_for_revoc(self, cert, version):
+        # Set up acme_client with proper key
+        acc_fs = account.AccountFileStorage(self.config)
+        try:
+            acc = acc_fs.load(cert.configuration["renewalparams"]["account"])
+        except errors.AccountNotFound:
+            logger.warning("Unable to find original account for revocation? "
+                           "Did you wipe the accounts?")
+            logger.debug(
+                "Using associated private cert key for acme revocation")
 
-    def _revoke_lineage_confirmation(self, cert):
-        info = self._more_info_lineage(cert)
-        return zope.component.getUtility(interfaces.IDisplay).yesno(
-            "Are you sure you would like to revoke all of valid certificates in"
-            "this lineage?{br}{info}".format(br=os.linesep, info=info))
+            with open(cert.version("privkey", version)) as key_f:
+                cert_key = key_f.read()
+            return acme_client.Client(
+                self.config.server, key=jose.JWK.load(cert_key))
+
+        else:
+            return acme_client.Client(self.config.server, key=acc.key)
+
+    def confirm_revocation(self, cert, version=None):
+        """Confirm revocation screen.
+
+        :param storage.RenewableCert cert: Renewable certificate object
+
+        :returns: True if user would like to revoke, False otherwise
+        :rtype: bool
+
+        """
+        if version is None:
+            info = self._more_info_lineage(cert)
+            return zope.component.getUtility(interfaces.IDisplay).yesno(
+                "Are you sure you would like to revoke all of valid certificates"
+                "in this lineage?{br}{info}".format(br=os.linesep, info=info))
+        else:
+            return zope.component.getUtility(interfaces.IDisplay).yesno(
+                "Are you sure you would like to revoke the following "
+                "certificate:{0}{cert}This action cannot be reversed!".format(
+                    os.linesep, cert=cert.formatted_str(version)))
 
     def _delete_action(self, selection):
         if self._is_lineage(selection):
@@ -80,15 +139,15 @@ class Manager(object):
     def _get_renewable_certs(self):
         """Get all of the available renewable certs."""
         certs = []
-        if not os.path.isdir(self.cli_config.renewal_configs_dir):
+        if not os.path.isdir(self.config.renewal_configs_dir):
             return certs
 
-        for filename in os.listdir(self.cli_config.renewal_configs_dir):
+        for filename in os.listdir(self.config.renewal_configs_dir):
             if not filename.endswith(".conf"):
                 continue
 
             config_path = os.path.join(
-                self.cli_config.renewal_configs_dir, filename)
+                self.config.renewal_configs_dir, filename)
             # Note: This doesn't have to be complete as it is merged with
             # defaults within renewable cert
             rc_config = configobj.ConfigObj(config_path)
@@ -96,7 +155,7 @@ class Manager(object):
             rc_config.filename = config_path
             try:
                 certs.append(storage.RenewableCert(
-                    rc_config, cli_config=self.cli_config))
+                    rc_config, cli_config=self.config))
             except errors.CertStorageError as err:
                 logger.error("Error loading RenewableCert: %s", str(err))
 
@@ -120,8 +179,8 @@ class Manager(object):
 
                 if code == display_util.OK:
                     action[1](selection)
-                if code == display_util.EXTRA:
-                    action[2](selection)
+                elif code == display_util.EXTRA:
+                    action2[1](selection)
                 elif code == display_util.HELP:
                     # This is less likely to need to be configured.
                     self._more_info(selection)
@@ -189,11 +248,10 @@ class Manager(object):
 
     def installed_status(self, cert, version):
         """Return relevant cert status in string form."""
-        msg = "Installed"
         if cert.fingerprint("sha1", version) in self.csha1_vhost:
-            status = msg
+            status = INSTALL_LABEL
         else:
-            status = " " * len(msg)
+            status = " " * len(INSTALL_LABEL)
 
         return status
 
@@ -210,12 +268,12 @@ class Manager(object):
         for version in versions:
             nodes.append((
                 l_tag + "." + str(version),
-                "v.{version} {start} - {end} | {install} | {revoke}".format(
+                "v.{version} {start} - {end} | {install} {validity}".format(
                     version=version,
                     start=cert.notbefore().strftime("%m-%d-%y"),
                     end=cert.notafter().strftime("%m-%d-%y"),
                     install=self.installed_status(cert, version),
-                    revoke=revoked_status(cert, version)
+                    validity=self.cpath_validity[cert.version("cert", version)]
                 ),
                 "off",
                 1,
@@ -230,24 +288,23 @@ class Manager(object):
         """
         csha1_vhlist = {}
 
-        if self.installer is None:
-            return csha1_vhlist
-
-        for (cert_path, _, path) in self.installer.get_all_certs_keys():
-            try:
-                with open(cert_path) as cert_file:
-                    cert_data = cert_file.read()
-            except IOError:
-                continue
-            try:
-                cert_obj, _ = crypto_util.pyopenssl_load_certificate(cert_data)
-            except errors.Error:
-                continue
-            cert_sha1 = cert_obj.digest("sha1")
-            if cert_sha1 in csha1_vhlist:
-                csha1_vhlist[cert_sha1].append(path)
-            else:
-                csha1_vhlist[cert_sha1] = [path]
+        for installer in self.installers:
+            for (cert_path, _, path) in installer.get_all_certs_keys():
+                try:
+                    with open(cert_path) as cert_file:
+                        cert_data = cert_file.read()
+                except IOError:
+                    continue
+                try:
+                    cert_obj, _ = crypto_util.pyopenssl_load_certificate(
+                        cert_data)
+                except errors.Error:
+                    continue
+                cert_sha1 = cert_obj.digest("sha1")
+                if cert_sha1 in csha1_vhlist:
+                    csha1_vhlist[cert_sha1].append(path)
+                else:
+                    csha1_vhlist[cert_sha1] = [path]
 
         return csha1_vhlist
 
@@ -280,31 +337,37 @@ class Manager(object):
         return "Certificate Information:{br}{cert_info}".format(
             br=os.linesep, cert_info=lineage.formatted_str(version))
 
-def _paths_parser(parser):
-    add = parser.add_argument_group("paths").add_argument
-    add("--config-dir", default=cli.flag_default("config_dir"),
-        help=cli.config_help("config_dir"))
-    add("--work-dir", default=cli.flag_default("work_dir"),
-        help=cli.config_help("work_dir"))
-    add("--logs-dir", default=cli.flag_default("logs_dir"),
-        help="Path to a directory where logs are stored.")
 
-    return parser
+def _get_validity_info(certs):
+    """Get revocation info for all certs."""
+    cpath_validity = {}
+    now = datetime.datetime.utcnow()
+    now = now.replace(tzinfo=pytz.utc)
+
+    for cert in certs:
+        for version in cert.available_versions("cert"):
+
+            if cert.notafter(version) < now:
+                cpath_validity[cert.version("cert", version)] = EXP_LABEL
+            else:
+                cpath_validity[cert.version("cert", version)] = revoked_status(
+                    cert.version("cert", version),
+                    cert.version("chain", version))
+
+    return cpath_validity
 
 
-def _create_parser():
-    parser = argparse.ArgumentParser()
-    #parser.add_argument("--cron", action="store_true", help="Run as cronjob.")
-    # pylint: disable=protected-access
-    return _paths_parser(parser)
+def revoked_status(cert_path, chain_path):
+    """Get revoked status for a particular cert version.
 
+    .. todo:: Make this a non-blocking call
 
-def revoked_status(cert, version):
-    """Get revoked status for a particular cert version."""
-    print "This is what I am working with:", cert.version("cert", version)
+    :param str cert_path: Path to certificate
+    :param str chain_path: Path to chain certificate
+
+    """
     url, _ = le_util.run_script(
-        ["openssl", "x509", "-in", cert.version("cert", version),
-        "-noout", "-ocsp_uri"])
+        ["openssl", "x509", "-in", cert_path, "-noout", "-ocsp_uri"])
 
     url = url.rstrip()
     host = url.partition("://")[2].rstrip("/")
@@ -317,50 +380,59 @@ def revoked_status(cert, version):
     output, _ = le_util.run_script(
         ["openssl", "ocsp",
         "-no_nonce", "-header", "Host", host,
-        "-issuer", cert.version("chain", version),
-        "-cert", cert.version("cert", version),
+        "-issuer", chain_path,
+        "-cert", cert_path,
         "-url", url,
-        "-CAfile", cert.version("chain", version)])
+        "-CAfile", chain_path])
 
-    return _translate_ocsp_query(cert, version, output)
+    return _translate_ocsp_query(cert_path, output)
 
 
-def _translate_ocsp_query(cert, version, ocsp_output):
+def _translate_ocsp_query(cert_path, ocsp_output):
     """Returns a label string out of the query."""
     if not "Response verify OK":
         return "Revocation Unknown"
-    if cert.version("cert", version) + ": good" in ocsp_output:
+    if cert_path + ": good" in ocsp_output:
         return ""
-    elif cert.version("cert", version) + ": revoked" in ocsp_output:
-        return "Revoked"
+    elif cert_path + ": revoked" in ocsp_output:
+        return REV_LABEL
     else:
         raise errors.Error(
-            "Unable to properly parse ocsp output: %s", ocsp_output)
+            "Unable to properly parse OCSP output: %s", ocsp_output)
 
 
-def confirm_revocation(cert, version):
-    """Confirm revocation screen.
-
-    :param cert: Renewable certificate object
-    :type cert: :class:
-
-    :returns: True if user would like to revoke, False otherwise
-    :rtype: bool
-
-    """
-    return zope.component.getUtility(interfaces.IDisplay).yesno(
-        "Are you sure you would like to revoke the following "
-        "certificate:{0}{cert}This action cannot be reversed!".format(
-            os.linesep, cert=cert.formatted_str(version)))
-
-
-def success_revocation(cert):
+def success_revocation(cert, version=None):
     """Display a success message.
 
     :param cert: cert that was revoked
-    :type cert: :class:`letsencrypt.revoker.Cert`
+    :type cert: :class:`letsencrypt.storage.RenewableCert`
+
+    :param int version: Version if only revoking a single cert in the lineage.
 
     """
-    zope.component.getUtility(interfaces.IDisplay).notification(
-        "You have successfully revoked the certificate for "
-        "%s" % cert)
+    if version is None:
+        msg = "You have successfully revoked all the certificates in this " \
+              "lineage. (%d)" % len(cert.available_versions("cert"))
+    else:
+        msg = "You have successfully revoked the certificate for "
+        "%s" % " ".join(
+            crypto_util.get_sans_from_pyopenssl(cert.pyopenssl(version)))
+
+    zope.component.getUtility(interfaces.IDisplay).notification(msg)
+
+
+def _extract_avail_installers(plugins, config):
+    """Prepared, Working + Misconfigured IInstallers entry_points."""
+     # Get all available installers
+    all_installers = plugins.ifaces((interfaces.IInstaller,))
+
+    all_installers.init(config)
+    # Verifying Installers actually implement the interface
+    verified_installers = all_installers.verify((interfaces.IInstaller,))
+    verified_installers.prepare()
+
+    # This is still a plugins registry object
+    avail_installers = verified_installers.available()
+    avail_installer_ep = avail_installers.values()
+
+    return [ep.init() for ep in avail_installer_ep]

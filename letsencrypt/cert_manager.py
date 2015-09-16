@@ -124,8 +124,9 @@ class Manager(object):
         else:
             return zope.component.getUtility(interfaces.IDisplay).yesno(
                 "Are you sure you would like to revoke the following "
-                "certificate:{0}{cert}This action cannot be reversed!".format(
-                    os.linesep, cert=cert.formatted_str(version)))
+                "certificate:{br}{info}{br}"
+                "This action cannot be reversed!".format(
+                    br=os.linesep, info=self._more_info_cert(cert, version)))
 
     def _delete_action(self, selection):
         ok_delete = True
@@ -350,16 +351,28 @@ class Manager(object):
     def _more_info_lineage(self, lineage):
         cert_str = []
         for version in sorted(lineage.available_versions("cert"), reverse=True):
-            cert_str.append(
-                "Certificate {version}:{br}{cert_info}".format(
-                    version=version, br=os.linesep,
-                    cert_info=lineage.formatted_str(version)))
-        return "Lineage Information:{br}{certs}".format(
+            cert_str.append(self._more_info_cert(lineage, version))
+
+        return "Lineage Information:{br}{br}{certs}".format(
             br=os.linesep, certs=os.linesep.join(cert_str))
 
     def _more_info_cert(self, lineage, version):
-        return "Certificate Information:{br}{cert_info}".format(
-            br=os.linesep, cert_info=lineage.formatted_str(version))
+        if self.cpath_validity[lineage.version("cert", version)]:
+            valid = self.cpath_validity[lineage.version("cert", version)]
+        else:
+            valid = "Valid"
+
+        status_info = "Installed: {location}{br}Status: {valid}".format(
+            location=", ".join(self.csha1_vhost.get(
+                lineage.fingerprint("sha1", version), [])),
+            br=os.linesep,
+            valid=valid)
+
+        return "Certificate v.{version}:{br}" \
+               "{cert_info}{br}{status_info}{br}".format(
+            version=version, br=os.linesep,
+            cert_info=lineage.formatted_str(version),
+            status_info=status_info)
 
 
 def _get_validity_info(certs):

@@ -33,6 +33,11 @@ INSTALL_LABEL = "(Installed)"
 class Manager(object):
     """Certificate Management Class, Revocation and Renewal.
 
+    .. todo:: Currently misconfigurations of an installer stop this from loading
+        This shouldn't be the case.
+    .. todo:: Warnings should be given if the certificate is installed before
+        deleting, no matter what the status of OCSP
+
     :ivar .disco.PluginsRegistry installers: Available (Working + Misconfigured)
         installers
     :ivar dict csha1_vhost: Mapping from cert_sha1 to installed location

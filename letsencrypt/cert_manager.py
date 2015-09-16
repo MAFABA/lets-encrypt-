@@ -401,13 +401,16 @@ def revoked_status(cert_path, chain_path):
 
     # This was a PITA...
     # Thanks to "Bulletproof SSL and TLS - Ivan Ristic" for helping me out
-    output, _ = le_util.run_script(
-        ["openssl", "ocsp",
-        "-no_nonce", "-header", "Host", host,
-        "-issuer", chain_path,
-        "-cert", cert_path,
-        "-url", url,
-        "-CAfile", chain_path])
+    try:
+        output, _ = le_util.run_script(
+            ["openssl", "ocsp",
+            "-no_nonce", "-header", "Host", host,
+            "-issuer", chain_path,
+            "-cert", cert_path,
+            "-url", url,
+            "-CAfile", chain_path])
+    except errors.SubprocessError:
+        return "(OCSP Failure)"
 
     return _translate_ocsp_query(cert_path, output)
 

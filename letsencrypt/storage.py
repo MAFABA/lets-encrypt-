@@ -11,8 +11,8 @@ import parsedatetime
 import pytz
 import pyrfc3339
 
-from letsencrypt import crypto_util
 from letsencrypt import constants
+from letsencrypt import crypto_util
 from letsencrypt import errors
 from letsencrypt import le_util
 
@@ -620,6 +620,8 @@ class RenewableCert(object):  # pylint: disable=too-many-instance-attributes
         with open(target["chain"], "w") as f:
             f.write(chain)
         with open(target["fullchain"], "w") as f:
+            # assumes that OpenSSL.crypto.dump_certificate includes
+            # ending newline character
             f.write(cert + chain)
 
         # Document what we've done in a new renewal config file

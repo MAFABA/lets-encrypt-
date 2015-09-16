@@ -111,6 +111,8 @@ class Client(object):
     :ivar .AuthHandler auth_handler: Authorizations handler that will
         dispatch DV and Continuity challenges to appropriate
         authenticators (providing `.IAuthenticator` interface).
+    :ivar .IAuthenticator dv_auth: Prepared (`.IAuthenticator.prepare`)
+        authenticator that can solve the `.constants.DV_CHALLENGES`.
     :ivar .IInstaller installer: Installer.
     :ivar acme.client.Client acme: Optional ACME client API handle.
        You might already have one from `register`.
@@ -118,14 +120,10 @@ class Client(object):
     """
 
     def __init__(self, config, account_, dv_auth, installer, acme=None):
-        """Initialize a client.
-
-        :param .IAuthenticator dv_auth: Prepared (`.IAuthenticator.prepare`)
-            authenticator that can solve the `.constants.DV_CHALLENGES`.
-
-        """
+        """Initialize a client."""
         self.config = config
         self.account = account_
+        self.dv_auth = dv_auth
         self.installer = installer
 
         # Initialize ACME if account is provided
@@ -261,14 +259,11 @@ class Client(object):
                 "Non-standard path(s), might not work with crontab installed "
                 "by your operating system package manager")
 
-        # XXX: just to stop RenewableCert from complaining; this is
-        # probably not a good solution
-        chain_pem = "" if chain is None else OpenSSL.crypto.dump_certificate(
-            OpenSSL.crypto.FILETYPE_PEM, chain)
         lineage = storage.RenewableCert.new_lineage(
             domains[0], OpenSSL.crypto.dump_certificate(
                 OpenSSL.crypto.FILETYPE_PEM, certr.body),
-            key.pem, chain_pem, params, config, cli_config)
+            key.pem, crypto_util.dump_pyopenssl_chain(chain),
+            params, config, cli_config)
         self._report_renewal_status(lineage)
         return lineage
 
@@ -306,7 +301,7 @@ class Client(object):
         :param certr: ACME "certificate" resource.
         :type certr: :class:`acme.messages.Certificate`
 
-        :param chain_cert:
+        :param list chain_cert:
         :param str cert_path: Candidate path to a certificate.
         :param str chain_path: Candidate path to a certificate chain.
 
@@ -333,12 +328,11 @@ class Client(object):
         logger.info("Server issued certificate; certificate written to %s",
                     act_cert_path)
 
-        if chain_cert is not None:
+        if chain_cert:
             chain_file, act_chain_path = le_util.unique_file(
                 chain_path, 0o644)
             # TODO: Except
-            chain_pem = OpenSSL.crypto.dump_certificate(
-                OpenSSL.crypto.FILETYPE_PEM, chain_cert)
+            chain_pem = crypto_util.dump_pyopenssl_chain(chain_cert)
             try:
                 chain_file.write(chain_pem)
             finally:
@@ -377,8 +371,6 @@ class Client(object):
         self.installer.save("Deployed Let's Encrypt Certificate")
         # sites may have been enabled / final cleanup
         self.installer.restart()
-
-        display_ops.success_installation(domains)
 
     def enhance_config(self, domains, config):
         """Enhance the configuration.
@@ -487,6 +479,7 @@ def rollback(default_installer, checkpoints, config, plugins):
     if installer is not None:
         installer.rollback_checkpoints(checkpoints)
         installer.restart()
+
 
 def revoke(default_installer, config, plugins, no_confirm, cert, authkey):
     """Revoke certificates.

@@ -12,6 +12,8 @@ import time
 import traceback
 
 import configargparse
+import configobj
+import OpenSSL
 import zope.component
 import zope.interface.exceptions
 import zope.interface.verify
@@ -32,6 +34,7 @@ from letsencrypt import interfaces
 from letsencrypt import le_util
 from letsencrypt import log
 from letsencrypt import reporter
+from letsencrypt import storage
 
 from letsencrypt.display import util as display_util
 from letsencrypt.display import ops as display_ops
@@ -164,8 +167,130 @@ def _init_le_client(args, config, authenticator, installer):
     return client.Client(config, acc, authenticator, installer, acme=acme)
 
 
-def run(args, config, plugins):
+def _find_duplicative_certs(domains, config, renew_config):
+    """Find existing certs that duplicate the request."""
+
+    identical_names_cert, subset_names_cert = None, None
+
+    configs_dir = renew_config.renewal_configs_dir
+    cli_config = configuration.RenewerConfiguration(config)
+    for renewal_file in os.listdir(configs_dir):
+        try:
+            full_path = os.path.join(configs_dir, renewal_file)
+            rc_config = configobj.ConfigObj(renew_config.renewer_config_file)
+            rc_config.merge(configobj.ConfigObj(full_path))
+            rc_config.filename = full_path
+            candidate_lineage = storage.RenewableCert(
+                rc_config, config_opts=None, cli_config=cli_config)
+        except (configobj.ConfigObjError, errors.CertStorageError, IOError):
+            logger.warning("Renewal configuration file %s is broken. "
+                           "Skipping.", full_path)
+            continue
+        # TODO: Handle these differently depending on whether they are
+        #       expired or still valid?
+        candidate_names = set(candidate_lineage.names())
+        if candidate_names == set(domains):
+            identical_names_cert = candidate_lineage
+        elif candidate_names.issubset(set(domains)):
+            subset_names_cert = candidate_lineage
+
+    return identical_names_cert, subset_names_cert
+
+
+def _treat_as_renewal(config, domains):
+    """Determine whether or not the call should be treated as a renewal.
+
+    :returns: RenewableCert or None if renewal shouldn't occur.
+    :rtype: :class:`.storage.RenewableCert`
+
+    :raises .Error: If the user would like to rerun the client again.
+
+    """
+    renewal = False
+
+    # Considering the possibility that the requested certificate is
+    # related to an existing certificate.  (config.duplicate, which
+    # is set with --duplicate, skips all of this logic and forces any
+    # kind of certificate to be obtained with renewal = False.)
+    if not config.duplicate:
+        ident_names_cert, subset_names_cert = _find_duplicative_certs(
+            domains, config, configuration.RenewerConfiguration(config))
+        # I am not sure whether that correctly reads the systemwide
+        # configuration file.
+        question = None
+        if ident_names_cert is not None:
+            question = (
+                "You have an existing certificate that contains exactly the "
+                "same domains you requested (ref: {0})\n\nDo you want to "
+                "renew and replace this certificate with a newly-issued one?"
+            ).format(ident_names_cert.configfile.filename)
+        elif subset_names_cert is not None:
+            question = (
+                "You have an existing certificate that contains a portion of "
+                "the domains you requested (ref: {0})\n\nIt contains these "
+                "names: {1}\n\nYou requested these names for the new "
+                "certificate: {2}.\n\nDo you want to replace this existing "
+                "certificate with the new certificate?"
+            ).format(subset_names_cert.configfile.filename,
+                     ", ".join(subset_names_cert.names()),
+                     ", ".join(domains))
+        if question is None:
+            # We aren't in a duplicative-names situation at all, so we don't
+            # have to tell or ask the user anything about this.
+            pass
+        elif zope.component.getUtility(interfaces.IDisplay).yesno(
+                question, "Replace", "Cancel"):
+            renewal = True
+        else:
+            reporter_util = zope.component.getUtility(interfaces.IReporter)
+            reporter_util.add_message(
+                "To obtain a new certificate that {0} an existing certificate "
+                "in its domain-name coverage, you must use the --duplicate "
+                "option.\n\nFor example:\n\n{1} --duplicate {2}".format(
+                    "duplicates" if ident_names_cert is not None else
+                    "overlaps with", sys.argv[0], " ".join(sys.argv[1:])),
+                reporter_util.HIGH_PRIORITY)
+            raise errors.Error(
+                "User did not use proper CLI and would like "
+                "to reinvoke the client.")
+
+        if renewal:
+            return ident_names_cert if ident_names_cert is not None else subset_names_cert
+
+    return None
+
+
+def _auth_from_domains(le_client, config, domains, plugins):
+    """Authenticate and enroll certificate."""
+    # Note: This can raise errors... caught above us though.
+    lineage = _treat_as_renewal(config, domains)
+
+    if lineage is not None:
+        new_certr, new_chain, new_key, _ = le_client.obtain_certificate(domains)
+        # TODO: Check whether it worked!
+        lineage.save_successor(
+            lineage.latest_common_version(), OpenSSL.crypto.dump_certificate(
+                OpenSSL.crypto.FILETYPE_PEM, new_certr.body),
+            new_key.pem, crypto_util.dump_pyopenssl_chain(new_chain))
+
+        lineage.update_all_links_to(lineage.latest_common_version())
+        # TODO: Check return value of save_successor
+        # TODO: Also update lineage renewal config with any relevant
+        #       configuration values from this attempt? - YES
+    else:
+        # TREAT AS NEW REQUEST
+        lineage = le_client.obtain_and_enroll_certificate(
+            domains, le_client.dv_auth, le_client.installer, plugins)
+        if not lineage:
+            raise errors.Error("Certificate could not be obtained")
+
+    return lineage
+
+#  TODO: Make run as close to auth + install as possible
+# Possible difficulties: args.csr was hacked into auth
+def run(args, config, plugins):  # pylint: disable=too-many-branches,too-many-locals
     """Obtain a certificate and install."""
+    # Begin authenticator and installer setup
     if args.configurator is not None and (args.installer is not None or
                                           args.authenticator is not None):
         return ("Either --configurator or --authenticator/--installer"
@@ -184,17 +309,27 @@ def run(args, config, plugins):
 
     if installer is None or authenticator is None:
         return "Configurator could not be determined"
+    # End authenticator and installer setup
 
     domains = _find_domains(args, installer)
+
     # TODO: Handle errors from _init_le_client?
     le_client = _init_le_client(args, config, authenticator, installer)
-    lineage = le_client.obtain_and_enroll_certificate(
-        domains, authenticator, installer, plugins)
-    if not lineage:
-        return "Certificate could not be obtained"
+
+    try:
+        lineage = _auth_from_domains(le_client, config, domains, plugins)
+    except errors.Error as err:
+        return str(err)
+
+    # TODO: We also need to pass the fullchain (for Nginx)
     le_client.deploy_certificate(
         domains, lineage.privkey, lineage.cert, lineage.chain)
     le_client.enhance_config(domains, config)
+
+    if lineage.available_versions("cert") == 1:
+        display_ops.success_installation(domains)
+    else:
+        display_ops.success_renewal(domains)
 
 
 def auth(args, config, plugins):
@@ -219,6 +354,7 @@ def auth(args, config, plugins):
     # TODO: Handle errors from _init_le_client?
     le_client = _init_le_client(args, config, authenticator, installer)
 
+    # This is a special case; cert and chain are simply saved
     if args.csr is not None:
         certr, chain = le_client.obtain_certificate_from_csr(le_util.CSR(
             file=args.csr[0], data=args.csr[1], form="der"))
@@ -226,9 +362,10 @@ def auth(args, config, plugins):
             certr, chain, args.cert_path, args.chain_path)
     else:
         domains = _find_domains(args, installer)
-        if not le_client.obtain_and_enroll_certificate(
-                domains, authenticator, installer, plugins):
-            return "Certificate could not be obtained"
+        try:
+            _auth_from_domains(le_client, config, domains, plugins)
+        except errors.Error as err:
+            return str(err)
 
 
 def install(args, config, plugins):
@@ -385,7 +522,6 @@ class HelpfulArgumentParser(object):
 
     """
     def __init__(self, args, plugins):
-        self.args = args
         plugin_names = [name for name, _p in plugins.iteritems()]
         self.help_topics = HELP_TOPICS + plugin_names + [None]
         self.parser = configargparse.ArgParser(
@@ -398,6 +534,7 @@ class HelpfulArgumentParser(object):
         self.parser._add_config_file_help = False  # pylint: disable=protected-access
         self.silent_parser = SilentParser(self.parser)
 
+        self.args = self.preprocess_args(args)
         help1 = self.prescan_for_flag("-h", self.help_topics)
         help2 = self.prescan_for_flag("--help", self.help_topics)
         assert max(True, "a") == "a", "Gravity changed direction"
@@ -409,6 +546,17 @@ class HelpfulArgumentParser(object):
         self.visible_topics = self.determine_help_topics(help_arg)
         #print self.visible_topics
         self.groups = {}  # elements are added by .add_group()
+
+    def preprocess_args(self, args):
+        """Work around some limitations in argparse.
+
+        Currently, add the default verb "run" as a default.
+        """
+
+        for token in args:
+            if token in VERBS:
+                return args
+        return ["run"] + args
 
     def prescan_for_flag(self, flag, possible_arguments):
         """Checks cli input for flags.
@@ -516,6 +664,9 @@ def create_parser(plugins, args):
     #for subparser in parser_run, parser_auth, parser_install:
     #    subparser.add_argument("domains", nargs="*", metavar="domain")
     helpful.add(None, "-d", "--domains", metavar="DOMAIN", action="append")
+    helpful.add(
+        None, "--duplicate", dest="duplicate", action="store_true",
+        help="Allow getting a certificate that duplicates an existing one")
 
     helpful.add_group(
         "automation",
@@ -578,7 +729,12 @@ def create_parser(plugins, args):
 
     _create_subparsers(helpful)
 
-    return helpful.parser
+    return helpful.parser, helpful.args
+
+# For now unfortunately this constant just needs to match the code below;
+# there isn't an elegant way to autogenerate it in time.
+VERBS = ["run", "auth", "install", "revoke", "rollback", "config_changes",\
+         "plugins"]
 
 
 def _create_subparsers(helpful):
@@ -699,7 +855,7 @@ def _setup_logging(args):
     # TODO: change before release?
     log_file_name = os.path.join(args.logs_dir, 'letsencrypt.log')
     file_handler = logging.handlers.RotatingFileHandler(
-        log_file_name, maxBytes=2**20, backupCount=10)
+        log_file_name, maxBytes=2 ** 20, backupCount=10)
     # rotate on each invocation, rollover only possible when maxBytes
     # is nonzero and backupCount is nonzero, so we set maxBytes as big
     # as possible not to overrun in single CLI invocation (1MB).
@@ -765,7 +921,8 @@ def main(cli_args=sys.argv[1:]):
 
     # note: arg parser internally handles --help (and exits afterwards)
     plugins = plugins_disco.PluginsRegistry.find_all()
-    args = create_parser(plugins, cli_args).parse_args(cli_args)
+    parser, tweaked_cli_args = create_parser(plugins, cli_args)
+    args = parser.parse_args(tweaked_cli_args)
     config = configuration.NamespaceConfig(args)
 
     # Setup logging ASAP, otherwise "No handlers could be found for

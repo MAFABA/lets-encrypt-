@@ -25,6 +25,7 @@ import letsencrypt
 
 from letsencrypt import account
 from letsencrypt import cert_manager
+from letsencrypt import colored_logging
 from letsencrypt import configuration
 from letsencrypt import constants
 from letsencrypt import client
@@ -242,8 +243,8 @@ def _treat_as_renewal(config, domains):
             # We aren't in a duplicative-names situation at all, so we don't
             # have to tell or ask the user anything about this.
             pass
-        elif zope.component.getUtility(interfaces.IDisplay).yesno(
-                question, "Replace", "Cancel"):
+        elif config.renew_by_default or zope.component.getUtility(
+                interfaces.IDisplay).yesno(question, "Replace", "Cancel"):
             renewal = True
         else:
             reporter_util = zope.component.getUtility(interfaces.IReporter)
@@ -273,8 +274,10 @@ def _auth_from_domains(le_client, config, domains, plugins):
     lineage = _treat_as_renewal(config, domains)
 
     if lineage is not None:
+        # TODO: schoen wishes to reuse key - discussion
+        # https://github.com/letsencrypt/letsencrypt/pull/777/files#r40498574
         new_certr, new_chain, new_key, _ = le_client.obtain_certificate(domains)
-        # TODO: Check whether it worked!
+        # TODO: Check whether it worked! <- or make sure errors are thrown (jdk)
         lineage.save_successor(
             lineage.latest_common_version(), OpenSSL.crypto.dump_certificate(
                 OpenSSL.crypto.FILETYPE_PEM, new_certr.body),
@@ -283,11 +286,10 @@ def _auth_from_domains(le_client, config, domains, plugins):
         lineage.update_all_links_to(lineage.latest_common_version())
         # TODO: Check return value of save_successor
         # TODO: Also update lineage renewal config with any relevant
-        #       configuration values from this attempt? - YES
+        #       configuration values from this attempt? <- Absolutely (jdkasten)
     else:
         # TREAT AS NEW REQUEST
-        lineage = le_client.obtain_and_enroll_certificate(
-            domains, le_client.dv_auth, le_client.installer, plugins)
+        lineage = le_client.obtain_and_enroll_certificate(domains, plugins)
         if not lineage:
             raise errors.Error("Certificate could not be obtained")
 
@@ -324,15 +326,12 @@ def run(args, config, plugins):  # pylint: disable=too-many-branches,too-many-lo
     # TODO: Handle errors from _init_le_client?
     le_client = _init_le_client(args, config, authenticator, installer)
 
-    try:
-        lineage = _auth_from_domains(le_client, config, domains, plugins)
-    except errors.Error as err:
-        return str(err)
+    lineage = _auth_from_domains(le_client, config, domains, plugins)
 
     # TODO: We also need to pass the fullchain (for Nginx)
     le_client.deploy_certificate(
         domains, lineage.privkey, lineage.cert, lineage.chain)
-    le_client.enhance_config(domains, config)
+    le_client.enhance_config(domains, args.redirect)
 
     if len(lineage.available_versions("cert")) == 1:
         display_ops.success_installation(domains)
@@ -342,7 +341,6 @@ def run(args, config, plugins):  # pylint: disable=too-many-branches,too-many-lo
 
 def auth(args, config, plugins):
     """Authenticate & obtain cert, but do not install it."""
-    # XXX: Update for renewer / RenewableCert
 
     if args.domains is not None and args.csr is not None:
         # TODO: --csr could have a priority, when --domains is
@@ -370,10 +368,7 @@ def auth(args, config, plugins):
             certr, chain, args.cert_path, args.chain_path)
     else:
         domains = _find_domains(args, installer)
-        try:
-            _auth_from_domains(le_client, config, domains, plugins)
-        except errors.Error as err:
-            return str(err)
+        _auth_from_domains(le_client, config, domains, plugins)
 
 
 def install(args, config, plugins):
@@ -547,7 +542,7 @@ class HelpfulArgumentParser(object):
         help2 = self.prescan_for_flag("--help", self.help_topics)
         assert max(True, "a") == "a", "Gravity changed direction"
         help_arg = max(help1, help2)
-        if help_arg:
+        if help_arg == True:
             # just --help with no topic; avoid argparse altogether
             print USAGE
             sys.exit(0)
@@ -684,8 +679,9 @@ def create_parser(plugins, args):
         version="%(prog)s {0}".format(letsencrypt.__version__),
         help="show program's version number and exit")
     helpful.add(
-        "automation", "--no-confirm", dest="no_confirm", action="store_true",
-        help="Turn off confirmation screens, currently used for --revoke")
+        "automation", "--renew-by-default", action="store_true",
+        help="Select renewal by default when domains are a superset of a "
+             "a previously attained cert")
     helpful.add(
         "automation", "--agree-eula", dest="eula", action="store_true",
         help="Agree to the Let's Encrypt Developer Preview EULA")
@@ -707,7 +703,7 @@ def create_parser(plugins, args):
         "testing", "--no-verify-ssl", action="store_true",
         help=config_help("no_verify_ssl"),
         default=flag_default("no_verify_ssl"))
-    helpful.add(
+    helpful.add(  # TODO: apache plugin does NOT respect it (#479)
         "testing", "--dvsni-port", type=int, default=flag_default("dvsni_port"),
         help=config_help("dvsni_port"))
     helpful.add("testing", "--simple-http-port", type=int,
@@ -729,6 +725,10 @@ def create_parser(plugins, args):
     helpful.add(
         "security", "--delete-tool", default=flag_default("delete_tool"),
         help="Tool used to delete all sensitive files.")
+    helpful.add(
+        "security", "--strict-permissions", action="store_true",
+        help="Require that all configuration files are owned by the current "
+             "user; only needed if your config is somewhere unsafe like /tmp/")
 
     _paths_parser(helpful)
     # _plugins_parsing should be the last thing to act upon the main
@@ -742,7 +742,7 @@ def create_parser(plugins, args):
 # For now unfortunately this constant just needs to match the code below;
 # there isn't an elegant way to autogenerate it in time.
 VERBS = ["run", "auth", "install", "revoke", "rollback", "config_changes",
-         "plugins"]
+         "plugins", "--help"]
 
 
 def _create_subparsers(helpful):
@@ -849,7 +849,7 @@ def _setup_logging(args):
     level = -args.verbose_count * 10
     fmt = "%(asctime)s:%(levelname)s:%(name)s:%(message)s"
     if args.text_mode:
-        handler = logging.StreamHandler()
+        handler = colored_logging.StreamHandler()
         handler.setFormatter(logging.Formatter(fmt))
     else:
         handler = log.DialogHandler()
@@ -911,14 +911,17 @@ def _handle_exception(exc_type, exc_value, trace, args):
 
         if issubclass(exc_type, errors.Error):
             sys.exit(exc_value)
-        elif args is None:
-            sys.exit(
-                "An unexpected error occurred. Please see the logfile '{0}' "
-                "for more details.".format(logfile))
         else:
-            sys.exit(
-                "An unexpected error occurred. Please see the logfiles in {0} "
-                "for more details.".format(args.logs_dir))
+            # Tell the user a bit about what happened, without overwhelming
+            # them with a full traceback
+            msg = ("An unexpected error occurred.\n" +
+                   traceback.format_exception_only(exc_type, exc_value)[0] +
+                   "Please see the ")
+            if args is None:
+                msg += "logfile '{0}' for more details.".format(logfile)
+            else:
+                msg += "logfiles in {0} for more details.".format(args.logs_dir)
+            sys.exit(msg)
     else:
         sys.exit("".join(
             traceback.format_exception(exc_type, exc_value, trace)))
@@ -933,15 +936,18 @@ def main(cli_args=sys.argv[1:]):
     parser, tweaked_cli_args = create_parser(plugins, cli_args)
     args = parser.parse_args(tweaked_cli_args)
     config = configuration.NamespaceConfig(args)
+    zope.component.provideUtility(config)
 
     # Setup logging ASAP, otherwise "No handlers could be found for
     # logger ..." TODO: this should be done before plugins discovery
     for directory in config.config_dir, config.work_dir:
         le_util.make_or_verify_dir(
-            directory, constants.CONFIG_DIRS_MODE, os.geteuid())
+            directory, constants.CONFIG_DIRS_MODE, os.geteuid(),
+            "--strict-permissions" in cli_args)
     # TODO: logs might contain sensitive data such as contents of the
     # private key! #525
-    le_util.make_or_verify_dir(args.logs_dir, 0o700, os.geteuid())
+    le_util.make_or_verify_dir(
+        args.logs_dir, 0o700, os.geteuid(), "--strict-permissions" in cli_args)
     _setup_logging(args)
 
     # do not log `args`, as it contains sensitive data (e.g. revoke --key)!

@@ -69,12 +69,12 @@ def renew(cert):
     authenticator_name = getattr(config, "authenticator", None)
     if authenticator_name is None:
         # TODO: notify user?
-        return False
+        return
     # Instantiate the appropriate authenticator
     authenticator = _get_prepared_plugin(authenticator_name, config)
     if authenticator is None:
         # TODO: notify user?
-        return False
+        return
     acc = account.AccountFileStorage(config).load(
         account_id=config.account)
 

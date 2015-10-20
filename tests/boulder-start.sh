@@ -4,11 +4,17 @@
 
 # ugh, go version output is like:
 # go version go1.4.2 linux/amd64
-GOVER=`go version | cut -d" " -f3 | cut -do -f2`  
+GOVER=`go version | cut -d" " -f3 | cut -do -f2`
 
 # version comparison
 function verlte {
+  #OS X doesn't support version sorting; emulate with sed
+  if [ `uname` == 'Darwin' ]; then
+    [ "$1" = "`echo -e \"$1\n$2\" |  sed 's/\b\([0-9]\)\b/0\1/g' \
+      | sort | sed 's/\b0\([0-9]\)/\1/g' | head -n1`" ]
+  else
     [  "$1" = "`echo -e "$1\n$2" | sort -V | head -n1`" ]
+  fi
 }
 
 if ! verlte 1.5 "$GOVER" ; then
@@ -26,11 +32,10 @@ export PATH="$GOPATH/bin:$PATH"
 go get -d github.com/letsencrypt/boulder/...
 cd $GOPATH/src/github.com/letsencrypt/boulder
 # goose is needed for ./test/create_db.sh
-if ! go get bitbucket.org/liamstask/goose/cmd/goose ; then
-  echo Problems installing goose... perhaps rm -rf \$GOPATH \("$GOPATH"\)
-  echo and try again...
-  exit 1
-fi
+wget https://github.com/jsha/boulder-tools/raw/master/goose.gz && \
+  mkdir $GOPATH/bin && \
+  zcat goose.gz > $GOPATH/bin/goose && \
+  chmod +x $GOPATH/bin/goose
 ./test/create_db.sh
 ./start.py &
 # Hopefully start.py bootstraps before integration test is started...

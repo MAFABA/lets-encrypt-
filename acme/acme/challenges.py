@@ -25,6 +25,14 @@ class Challenge(jose.TypedJSONObjectWithFields):
     """ACME challenge."""
     TYPES = {}
 
+    @classmethod
+    def from_json(cls, jobj):
+        try:
+            return super(Challenge, cls).from_json(jobj)
+        except jose.UnrecognizedTypeError as error:
+            logger.debug(error)
+            return UnrecognizedChallenge.from_json(jobj)
+
 
 class ContinuityChallenge(Challenge):  # pylint: disable=abstract-method
     """Client validation challenges."""
@@ -42,6 +50,32 @@ class ChallengeResponse(jose.TypedJSONObjectWithFields):
     resource = fields.Resource(resource_type)
 
 
+class UnrecognizedChallenge(Challenge):
+    """Unrecognized challenge.
+
+    ACME specification defines a generic framework for challenges and
+    defines some standard challenges that are implemented in this
+    module. However, other implementations (including peers) might
+    define additional challenge types, which should be ignored if
+    unrecognized.
+
+    :ivar jobj: Original JSON decoded object.
+
+    """
+
+    def __init__(self, jobj):
+        super(UnrecognizedChallenge, self).__init__()
+        object.__setattr__(self, "jobj", jobj)
+
+    def to_partial_json(self):
+        # pylint: disable=no-member
+        return self.jobj
+
+    @classmethod
+    def from_json(cls, jobj):
+        return cls(jobj)
+
+
 @Challenge.register
 class SimpleHTTP(DVChallenge):
     """ACME "simpleHttp" challenge.
@@ -53,6 +87,9 @@ class SimpleHTTP(DVChallenge):
 
     TOKEN_SIZE = 128 / 8  # Based on the entropy value from the spec
     """Minimum size of the :attr:`token` in bytes."""
+
+    URI_ROOT_PATH = ".well-known/acme-challenge"
+    """URI root path for the server provisioned resource."""
 
     # TODO: acme-spec doesn't specify token as base64-encoded value
     token = jose.Field(
@@ -72,6 +109,11 @@ class SimpleHTTP(DVChallenge):
         # URI_ROOT_PATH!
         return b'..' not in self.token and b'/' not in self.token
 
+    @property
+    def path(self):
+        """Path (starting with '/') for provisioned resource."""
+        return '/' + self.URI_ROOT_PATH + '/' + self.encode('token')
+
 
 @ChallengeResponse.register
 class SimpleHTTPResponse(ChallengeResponse):
@@ -83,12 +125,12 @@ class SimpleHTTPResponse(ChallengeResponse):
     typ = "simpleHttp"
     tls = jose.Field("tls", default=True, omitempty=True)
 
-    URI_ROOT_PATH = ".well-known/acme-challenge"
-    """URI root path for the server provisioned resource."""
-
+    URI_ROOT_PATH = SimpleHTTP.URI_ROOT_PATH
     _URI_TEMPLATE = "{scheme}://{domain}/" + URI_ROOT_PATH + "/{token}"
 
     CONTENT_TYPE = "application/jose+json"
+    PORT = 80
+    TLS_PORT = 443
 
     @property
     def scheme(self):
@@ -98,7 +140,7 @@ class SimpleHTTPResponse(ChallengeResponse):
     @property
     def port(self):
         """Port that the ACME client should be listening for validation."""
-        return 443 if self.tls else 80
+        return self.TLS_PORT if self.tls else self.PORT
 
     def uri(self, domain, chall):
         """Create an URI to the provisioned resource.

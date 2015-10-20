@@ -200,45 +200,28 @@ def valid_privkey(privkey):
 def pyopenssl_load_certificate(data):
     """Load PEM/DER certificate.
 
-    :returns: tuple of obj and filetype
-
     :raises errors.Error:
 
     """
-    return _pyopenssl_load(data, OpenSSL.crypto.load_certificate)
 
-
-def _pyopenssl_load(data, method, types=(
-        OpenSSL.crypto.FILETYPE_PEM, OpenSSL.crypto.FILETYPE_ASN1)):
     openssl_errors = []
-    for filetype in types:
+
+    for file_type in (OpenSSL.crypto.FILETYPE_PEM, OpenSSL.crypto.FILETYPE_ASN1):
         try:
-            return method(filetype, data), filetype
-        except OpenSSL.crypto.Error as error:  # TODO: anything else?
+            return OpenSSL.crypto.load_certificate(file_type, data), file_type
+        except OpenSSL.crypto.Error as error:  # TODO: other errors?
             openssl_errors.append(error)
     raise errors.Error("Unable to load: {0}".format(",".join(
         str(error) for error in openssl_errors)))
 
 
-def private_jwk_to_pyopenssl(jwk):
-    """Convert private JWK to pyOpenSSL key."""
-    key_pem = jwk.key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.NoEncryption())
-    return OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, key_pem)
-
-
-def get_sans_from_pyopenssl(cert_or_req):
-    """Gets SANs from a pyopenssl object.
-
-    :param cert_or_req: Certificate or CSR.
-    :type cert_or_req: `OpenSSL.crypto.X509` or `OpenSSL.crypto.X509Req`.
-
-    :returns: A list of SANs.
-    :rtype: list
-
-    """
+def _get_sans_from_cert_or_req(cert_or_req_str, load_func,
+                               typ=OpenSSL.crypto.FILETYPE_PEM):
+    try:
+        cert_or_req = load_func(typ, cert_or_req_str)
+    except OpenSSL.crypto.Error as error:
+        logger.exception(error)
+        raise
     # pylint: disable=protected-access
     return acme_crypto_util._pyopenssl_cert_or_req_san(cert_or_req)
 
@@ -271,17 +254,6 @@ def get_sans_from_csr(csr, typ=OpenSSL.crypto.FILETYPE_PEM):
         csr, OpenSSL.crypto.load_certificate_request, typ)
 
 
-def _get_sans_from_cert_or_req(
-        cert_or_req_str, load_func, typ=OpenSSL.crypto.FILETYPE_PEM):
-    try:
-        cert_or_req = load_func(typ, cert_or_req_str)
-    except OpenSSL.crypto.Error as error:
-        logger.exception(error)
-        raise
-
-    return get_sans_from_pyopenssl(cert_or_req)
-
-
 def asn1_generalizedtime_to_dt(timestamp):
     """Convert ASN.1 GENERALIZEDTIME to datetime.
 
@@ -297,7 +269,7 @@ def asn1_generalizedtime_to_dt(timestamp):
 
 def pyopenssl_x509_name_as_text(x509name):
     """Convert `OpenSSL.crypto.X509Name` to text."""
-    return "/".join("{0}={1}" for key, value in x509name.get_components())
+    return "/".join("{0}={1}".format(key, value) for key, value in x509name.get_components())
 
 
 def dump_pyopenssl_chain(chain, filetype=OpenSSL.crypto.FILETYPE_PEM):

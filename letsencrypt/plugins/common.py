@@ -5,6 +5,7 @@ import re
 import shutil
 import tempfile
 
+import OpenSSL
 import zope.interface
 
 from acme.jose import util as jose_util
@@ -23,10 +24,10 @@ def dest_namespace(name):
     """ArgumentParser dest namespace (prefix of all destinations)."""
     return name.replace("-", "_") + "_"
 
-private_ips_regex = re.compile(  # pylint: disable=invalid-name
+private_ips_regex = re.compile(
     r"(^127\.0\.0\.1)|(^10\.)|(^172\.1[6-9]\.)|"
     r"(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^192\.168\.)")
-hostname_regex = re.compile(  # pylint: disable=invalid-name
+hostname_regex = re.compile(
     r"^(([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\.)*[a-z]+$", re.IGNORECASE)
 
 
@@ -44,6 +45,10 @@ class Plugin(object):
     def option_namespace(self):
         """ArgumentParser options namespace (prefix of all options)."""
         return option_namespace(self.name)
+
+    def option_name(self, name):
+        """Option name (include plugin namespace)."""
+        return self.option_namespace + name
 
     @property
     def dest_namespace(self):
@@ -173,7 +178,7 @@ class Dvsni(object):
                             achall.chall.encode("token") + '.pem')
 
     def _setup_challenge_cert(self, achall, s=None):
-        # pylint: disable=invalid-name
+
         """Generate and write out challenge certificate."""
         cert_path = self.get_cert_path(achall)
         key_path = self.get_key_path(achall)
@@ -181,7 +186,11 @@ class Dvsni(object):
         self.configurator.reverter.register_file_creation(True, key_path)
         self.configurator.reverter.register_file_creation(True, cert_path)
 
-        response, cert_pem, key_pem = achall.gen_cert_and_response(s)
+        response, cert, key = achall.gen_cert_and_response(s)
+        cert_pem = OpenSSL.crypto.dump_certificate(
+            OpenSSL.crypto.FILETYPE_PEM, cert)
+        key_pem = OpenSSL.crypto.dump_privatekey(
+            OpenSSL.crypto.FILETYPE_PEM, key)
 
         # Write out challenge cert and key
         with open(cert_path, "wb") as cert_chall_fd:

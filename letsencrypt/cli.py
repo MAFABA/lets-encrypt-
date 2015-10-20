@@ -907,7 +907,7 @@ def _paths_parser(helpful):
     if verb == "auth":
         add("paths", "--cert-path", default=flag_default("auth_cert_path"), help=cph)
     elif verb == "revoke":
-        add("paths", "--cert-path", type=read_file, required=True, help=cph)
+        add("paths", "--cert-path", type=read_file, help=cph)
     else:
         add("paths", "--cert-path", help=cph, required=(verb == "install"))
 

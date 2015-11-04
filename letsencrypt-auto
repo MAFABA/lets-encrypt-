@@ -73,6 +73,21 @@ then
   fi
 fi
 
+if uname | grep -iq Darwin ; then
+  printf Searching for virtualenv...
+  if hash virtualenv ; then
+    echo "Found it!"
+  else
+    echo "Not found"
+    for dir in /bin/ ~/Library/Python/2.7/bin ; do
+      if [ -x "$dir"/virtualenv ] ; then
+        echo adding $dir temporarily to PATH
+        export PATH="$PATH":"$dir"
+      fi
+    done
+  fi
+fi
+
 printf "Updating letsencrypt and virtual environment dependencies..."
 if [ "$VERBOSE" = 1 ]  ; then
   echo

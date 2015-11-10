@@ -37,7 +37,7 @@ class NamespaceConfig(object):
 
     def __init__(self, namespace):
         self.namespace = namespace
-        if namespace.beta_program:
+        if namespace.beta_program is True:
             namespace.agree_dev_preview = True
             namespace.server = "https://acme-v01.api.letsencrypt.org/directory"
         # Check command line parameters sanity, and error out in case of problem.

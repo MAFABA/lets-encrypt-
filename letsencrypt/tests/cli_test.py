@@ -10,6 +10,7 @@ import unittest
 import mock
 
 from letsencrypt import account
+from letsencrypt import cli
 from letsencrypt import configuration
 from letsencrypt import errors
 
@@ -34,11 +35,10 @@ class CLITest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp_dir)
 
-    def _call(self, args):
-        from letsencrypt import cli
-        args = ['--text', '--config-dir', self.config_dir,
-                '--work-dir', self.work_dir, '--logs-dir', self.logs_dir,
-                '--agree-dev-preview'] + args
+    def _call(self, args, dev_preview=True):
+        args = (['--text', '--config-dir', self.config_dir,
+                '--work-dir', self.work_dir, '--logs-dir', self.logs_dir] + 
+                (['--agree-dev-preview'] if dev_preview else []) + args)
         with mock.patch('letsencrypt.cli.sys.stdout') as stdout:
             with mock.patch('letsencrypt.cli.sys.stderr') as stderr:
                 with mock.patch('letsencrypt.cli.client') as client:
@@ -50,7 +50,6 @@ class CLITest(unittest.TestCase):
         Variant of _call that preserves stdout so that it can be mocked by the
         caller.
         """
-        from letsencrypt import cli
         args = ['--text', '--config-dir', self.config_dir,
                 '--work-dir', self.work_dir, '--logs-dir', self.logs_dir,
                 '--agree-dev-preview'] + args
@@ -112,7 +111,6 @@ class CLITest(unittest.TestCase):
         self.assertTrue("--key-path" not in out)
 
         out = self._help_output(['-h'])
-        from letsencrypt import cli
         self.assertTrue(cli.usage_strings(plugins)[0] in out)
 
     @mock.patch('letsencrypt.cli.display_ops')
@@ -148,6 +146,11 @@ class CLITest(unittest.TestCase):
         with MockedVerb("certonly") as mock_certonly:
             self._call(["auth", "--standalone"])
             self.assertEqual(1, mock_certonly.call_count)
+
+    def test_server_config_and_beta_program(self):
+        _, _, _, client = self._call(["--beta-program"], dev_preview=False)
+        self.assertEqual(True, client.config.agree_dev_preview)
+        self.assertEqual("https://acme-v01.api.letsencrypt.org/directory", client.config.server)
 
     def test_rollback(self):
         _, _, _, client = self._call(['rollback'])
@@ -281,8 +284,6 @@ class CLITest(unittest.TestCase):
     @mock.patch('letsencrypt.cli.sys')
     def test_handle_exception(self, mock_sys):
         # pylint: disable=protected-access
-        from letsencrypt import cli
-
         mock_open = mock.mock_open()
         with mock.patch('letsencrypt.cli.open', mock_open, create=True):
             exception = Exception('detail')
@@ -433,8 +434,6 @@ class MockedVerb(object):
 
     """
     def __init__(self, verb_name):
-        from letsencrypt import cli
-
         self.verb_dict = cli.HelpfulArgumentParser.VERBS
         self.verb_func = None
         self.verb_name = verb_name

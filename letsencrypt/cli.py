@@ -831,6 +831,9 @@ def prepare_and_parse_args(plugins, args):
         "automation", "--agree-dev-preview", action="store_true",
         help="Agree to the Let's Encrypt Developer Preview Disclaimer")
     helpful.add(
+        "automation", "--beta-program", action="store_true",
+        help="Use the beta program ACME server, and understand that this is beta software")
+    helpful.add(
         "automation", "--agree-tos", dest="tos", action="store_true",
         help="Agree to the Let's Encrypt Subscriber Agreement")
     helpful.add(

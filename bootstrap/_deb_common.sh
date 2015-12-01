@@ -39,10 +39,12 @@ if dpkg --compare-version 1.0 gt "$AUGVERSION" ; then
     if lsb_release -a | grep -q wheezy ; then
         if ! grep -v -e ' *#' /etc/apt/sources.list | grep -q wheezy-backports ; then
             # XXX ask for permission before doing this?
-            echo Installing augeas from wheezy-backports...
+            echo Adding wheezy-backports to APT sources to provide libaugeas0...
             echo deb http://http.debian.net/debian wheezy-backports main >> /etc/apt/sources.list
             apt-get update
-            apt-get install -y --no-install-recommends -t wheezy-backports libaugeas0
+        fi
+        echo Installing augeas from wheezy-backports...
+        apt-get install -y --no-install-recommends -t wheezy-backports libaugeas0
         fi
         augeas_pkg=
     else

@@ -35,7 +35,7 @@ fi
 augeas_pkg=libaugeas0
 AUGVERSION=`apt-cache show --no-all-versions libaugeas0 | grep ^Version: | cut -d" " -f2`
 
-if dpkg --compare-version 1.0 gt "$AUGVERSION" ; then
+if dpkg --compare-versions 1.0 gt "$AUGVERSION" ; then
     if lsb_release -a | grep -q wheezy ; then
         if ! grep -v -e ' *#' /etc/apt/sources.list | grep -q wheezy-backports ; then
             echo Adding wheezy-backports to APT sources to provide libaugeas0...

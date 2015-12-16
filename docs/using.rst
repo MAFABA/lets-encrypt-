@@ -65,12 +65,12 @@ or for full help, type:
 
 ``letsencrypt-auto`` is the recommended method of running the Let's Encrypt
 client beta releases on systems that don't have a packaged version.  Debian
-unstable, Fedora 23, Arch linux, FreeBSD and OpenBSD now have native packages,
-so on those systems you can just install ``letsencrypt`` (and perhaps
-``letsencrypt-apache``).  If you'd like to run the latest copy from Git, or
-run your own locally modified copy of the client, follow the instructions in
-the :doc:`contributing`.  Some `other methods of installation`_ are discussed
-below.
+unstable and testing, Fedora 23 and Rawhide, Arch linux, FreeBSD and OpenBSD
+now have native packages, so on those systems you can just install
+``letsencrypt`` (and perhaps ``letsencrypt-apache``).  If you'd like to run
+the latest copy from Git, or run your own locally modified copy of the client,
+follow the instructions in the :doc:`contributing`.  Some `other methods of
+installation`_ are discussed below.
 
 
 Plugins

@@ -1,5 +1,7 @@
 """Apache plugin constants."""
+import logging
 import pkg_resources
+
 from letsencrypt import le_util
 
 
@@ -84,8 +86,15 @@ def os_constant(key):
     :return: value of constant for active os
     """
     os_info = le_util.get_os_info()
+    logger = logging.getLogger(__name__)
+    print "Got logger", logger
+    raise ValueError, "bang"
     try:
-        constants = CLI_DEFAULTS[os_info[0].lower()]
+        platform = os_info[0].lower()
+        constants = CLI_DEFAULTS[platform]
+        logger.info("Using apache constants for %s", platform)
+        logger.debug("Constants are %r", constants)
     except KeyError:
+        logger.warn("Cannot find Apache metaconfig, falling back to the Debian defaults")
         constants = CLI_DEFAULTS["debian"]
     return constants[key]

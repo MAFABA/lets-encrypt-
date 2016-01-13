@@ -19,7 +19,6 @@ from subprocess import check_call, CalledProcessError
 from sys import argv, exit
 from urllib2 import build_opener, HTTPHandler, HTTPSHandler, HTTPError
 
-
 PUBLIC_KEY = environ.get('LE_AUTO_PUBLIC_KEY', """-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvWrG8oyI2FlCWEEEo1+Q
 +VmDgUdMKGWlThHm5oM6XODDpllY8gUGWoYn//jCUMQuQmDTtvPz1V6s5uoESnG3
@@ -30,7 +29,6 @@ lLMOJYYAQEv7ii8exClMCTUiTzVevI0mSXyHxRcILFNRYrgc5OBNtf1w2ZjcHKAr
 9QIDAQAB
 -----END PUBLIC KEY-----
 """)
-
 
 class ExpectedError(Exception):
     """A novice-readable exception that also carries the original exception for
@@ -90,7 +88,7 @@ def verified_new_le_auto(get, tag, temp_dir):
     le_auto_dir = environ.get(
         'LE_AUTO_DIR_TEMPLATE',
         'https://raw.githubusercontent.com/letsencrypt/letsencrypt/%s/'
-        'letsencrypt_auto/') % tag
+        'letsencrypt-auto-source/') % tag
     write(get(le_auto_dir + 'letsencrypt-auto'), temp_dir, 'letsencrypt-auto')
     write(get(le_auto_dir + 'letsencrypt-auto.sig'), temp_dir, 'letsencrypt-auto.sig')
     write(PUBLIC_KEY, temp_dir, 'public_key.pem')

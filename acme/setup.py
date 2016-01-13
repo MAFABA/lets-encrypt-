@@ -4,14 +4,15 @@ from setuptools import setup
 from setuptools import find_packages
 
 
-version = '0.0.1.22'
+version = '0.2.0.dev0'
 
+# Please update tox.ini when modifying dependency version requirements
 install_requires = [
     # load_pem_private/public_key (>=0.6)
     # rsa_recover_prime_factors (>=0.8)
     'cryptography>=0.8',
-    # Connection.set_tlsext_host_name (>=0.13), X509Req.get_extensions (>=0.15)
-    'PyOpenSSL>=0.15',
+    # Connection.set_tlsext_host_name (>=0.13)
+    'PyOpenSSL>=0.13',
     'pyrfc3339',
     'pytz',
     'requests',
@@ -21,17 +22,16 @@ install_requires = [
 ]
 
 # env markers in extras_require cause problems with older pip: #517
+# Keep in sync with conditional_requirements.py.
 if sys.version_info < (2, 7):
     install_requires.extend([
         # only some distros recognize stdlib argparse as already satisfying
         'argparse',
-        'mock<1.1.0',
     ])
-else:
-    install_requires.append('mock')
 
+# Keep in sync with conditional_requirements.py.
 if sys.version_info < (2, 7, 9):
-    # For secure SSL connexion with Python 2.7 (InsecurePlatformWarning)
+    # For secure SSL connection with Python 2.7 (InsecurePlatformWarning)
     install_requires.append('ndg-httpsclient')
     install_requires.append('pyasn1')
 
@@ -66,6 +66,7 @@ setup(
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3.5',
         'Topic :: Internet :: WWW/HTTP',
         'Topic :: Security',
     ],
@@ -73,6 +74,7 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=install_requires,
+    tests_require='mock<1.1.0' if sys.version_info < (2, 7) else 'mock',
     extras_require={
         'docs': docs_extras,
         'testing': testing_extras,

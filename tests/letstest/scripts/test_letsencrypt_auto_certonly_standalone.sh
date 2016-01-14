@@ -20,6 +20,6 @@ fi
 pip --version
 ~/.local/share/letsencrypt/bin/pip --version
 
-if [ "$FAIL" = 1 ] then
+if [ "$FAIL" = 1 ] ; then
     exit 1
 fi

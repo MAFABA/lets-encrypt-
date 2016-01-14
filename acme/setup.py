@@ -11,6 +11,7 @@ install_requires = [
     # load_pem_private/public_key (>=0.6)
     # rsa_recover_prime_factors (>=0.8)
     'cryptography>=0.8',
+    'mock',
     # Connection.set_tlsext_host_name (>=0.13)
     'PyOpenSSL>=0.13',
     'pyrfc3339',
@@ -21,21 +22,11 @@ install_requires = [
     'werkzeug',
 ]
 
-# env markers in extras_require cause problems with older pip: #517
-if sys.version_info < (2, 7):
-    install_requires.extend([
-        # only some distros recognize stdlib argparse as already satisfying
-        'argparse',
-        'mock<1.1.0',
-    ])
-else:
-    install_requires.append('mock')
-
-# Installing for all 2.7 versions for wheel compatibility: #2175
-if sys.version_info < (2, 8):
+py279_extras = [
     # For secure SSL connection with Python 2.7 (InsecurePlatformWarning)
-    install_requires.append('ndg-httpsclient')
-    install_requires.append('pyasn1')
+    'ndg-httpsclient',
+    'pyasn1'
+]
 
 docs_extras = [
     'Sphinx>=1.0',  # autodoc_member_order = 'bysource', autodoc_default_flags
@@ -77,6 +68,7 @@ setup(
     include_package_data=True,
     install_requires=install_requires,
     extras_require={
+        ':python_version<"2.7.9"': py279_extras,
         'docs': docs_extras,
         'testing': testing_extras,
     },

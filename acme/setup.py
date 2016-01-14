@@ -11,7 +11,6 @@ install_requires = [
     # load_pem_private/public_key (>=0.6)
     # rsa_recover_prime_factors (>=0.8)
     'cryptography>=0.8',
-    'mock',
     # Connection.set_tlsext_host_name (>=0.13)
     'PyOpenSSL>=0.13',
     'pyrfc3339',
@@ -21,6 +20,16 @@ install_requires = [
     'six',
     'werkzeug',
 ]
+
+# env markers in extras_require cause problems with older pip: #517
+if sys.version_info < (2, 7):
+    install_requires.extend([
+        # only some distros recognize stdlib argparse as already satisfying
+        'argparse',
+        'mock<1.1.0',
+    ])
+else:
+    install_requires.append('mock')
 
 py279_extras = [
     # For secure SSL connection with Python 2.7 (InsecurePlatformWarning)

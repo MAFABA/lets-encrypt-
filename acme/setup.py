@@ -31,7 +31,8 @@ if sys.version_info < (2, 7):
 else:
     install_requires.append('mock')
 
-if sys.version_info < (2, 7, 9):
+# Installing for all 2.7 versions for wheel compatibility: #2175
+if sys.version_info < (2, 8):
     # For secure SSL connection with Python 2.7 (InsecurePlatformWarning)
     install_requires.append('ndg-httpsclient')
     install_requires.append('pyasn1')

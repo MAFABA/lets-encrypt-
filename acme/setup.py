@@ -31,12 +31,6 @@ if sys.version_info < (2, 7):
 else:
     install_requires.append('mock')
 
-# env markers in extras_require cause problems with older pip: #517
-if sys.version_info < (2, 7, 9):
-    # For secure SSL connection with Python 2.7 (InsecurePlatformWarning)
-    install_requires.append('ndg-httpsclient')
-    install_requires.append('pyasn1')
-
 py279_extras = [
     # For secure SSL connection with Python 2.7 (InsecurePlatformWarning)
     'ndg-httpsclient',

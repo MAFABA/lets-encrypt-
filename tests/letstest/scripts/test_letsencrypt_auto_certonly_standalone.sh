@@ -8,8 +8,18 @@
 #private_ip=$(curl -s http://169.254.169.254/2014-11-05/meta-data/local-ipv4)
 
 cd letsencrypt
-./letsencrypt-auto certonly -v --standalone --debug \
+FAIL=
+if ! ./letsencrypt-auto certonly -v --standalone --debug \
                    --text --agree-dev-preview --agree-tos \
                    --renew-by-default --redirect \
                    --register-unsafely-without-email \
-                   --domain $PUBLIC_HOSTNAME --server $BOULDER_URL
+                   --domain $PUBLIC_HOSTNAME --server $BOULDER_URL ; then
+    FAIL=1
+fi
+
+pip --version
+~/.local/share/letsencrypt/bin/pip --version
+
+if [ "$FAIL" = 1 ] then
+    exit 1
+fi

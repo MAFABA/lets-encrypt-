@@ -192,8 +192,8 @@ class TwoVhost80Test(util.ApacheTest):
         self.assertEqual(
             self.vh_truth[0],
             self.config._find_best_vhost("encryption-example.demo"))
-        self.assertTrue(
-            self.config._find_best_vhost("does-not-exist.com") is None)
+        self.assertEqual(
+            self.config._find_best_vhost("does-not-exist.com"), None)
 
     def test_find_best_vhost_variety(self):
         # pylint: disable=protected-access

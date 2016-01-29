@@ -42,6 +42,12 @@ Activating a shell in this way makes it easier to run unit tests
 with ``tox`` and integration tests, as described below. To reverse this, you
 can type ``deactivate``.  More information can be found in the `virtualenv docs`_.
 
+.. warning:: You should regularly run ``git pull`` to keep your local copy of
+    the client in sync with git master.  However from time to time you will
+    encounter ``virtualenv`` / ``pkg_resources`` due to changing versions of
+    various components, or modules moving but leaving .pyc files behind.  If
+    these occur, simply re-run ``./bootstrap/dev/venv.sh``.
+
 .. _`virtualenv docs`: https://virtualenv.pypa.io
 
 Find issues to work on

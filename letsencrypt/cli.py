@@ -187,22 +187,6 @@ def config_help(name, hidden=False):
         return interfaces.IConfig[name].__doc__
 
 
-class SilentParser(object):  # pylint: disable=too-few-public-methods
-    """Silent wrapper around argparse.
-
-    A mini parser wrapper that doesn't print help for its
-    arguments. This is needed for the use of callbacks to define
-    arguments within plugins.
-
-    """
-    def __init__(self, parser):
-        self.parser = parser
-
-    def add_argument(self, *args, **kwargs):
-        """Wrap, but silence help"""
-        kwargs["help"] = argparse.SUPPRESS
-        self.parser.add_argument(*args, **kwargs)
-
 class HelpfulArgumentParser(object):
     """Argparse Wrapper.
 
@@ -234,7 +218,6 @@ class HelpfulArgumentParser(object):
 
         # This is the only way to turn off overly verbose config flag documentation
         self.parser._add_config_file_help = False  # pylint: disable=protected-access
-        self.silent_parser = SilentParser(self.parser)
 
         # This setting attempts to force all default values to things that are
         # pythonically false; it is used to detect when values have been
@@ -487,7 +470,7 @@ class HelpfulArgumentParser(object):
             return group
         else:
             #print("Invisible group " + topic)
-            return self.silent_parser
+            return self.parser
 
     def add_plugin_args(self, plugins):
         """

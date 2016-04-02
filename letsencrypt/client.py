@@ -218,12 +218,31 @@ class Client(object):
         logger.debug("CSR: %s, domains: %s", csr, domains)
 
         if authzr is None:
-            authzr = self.auth_handler.get_authorizations(domains)
+            try:
+                authzr = self.auth_handler.get_authorizations(domains)
+            except errors.Error as error:
+                if error.typ == "urn:acme:error:rateLimited":
+                    if self.config.dry_run:
+                        # We convert this exception into a special one
+                        # that is reported differently.
+                        raise errors.DryRunAuthzRateLimited()
+                # We re-raise the original error.
+                raise
 
-        certr = self.acme.request_issuance(
-            jose.ComparableX509(
-                OpenSSL.crypto.load_certificate_request(typ, csr.data)),
-                authzr)
+        try:
+            certr = self.acme.request_issuance(
+                jose.ComparableX509(
+                    OpenSSL.crypto.load_certificate_request(typ, csr.data)),
+                    authzr)
+        except errors.Error as error:
+            if error.typ == "urn:acme:error:rateLimited":
+                if self.config.dry_run:
+                    # We convert this exception into a special one
+                    # that is reported differently.
+                    raise errors.DryRunNewCertRateLimited()
+            # We re-raise the original error.
+            raise
+
         return certr, self.acme.fetch_chain(certr)
 
     def obtain_certificate(self, domains):
@@ -240,9 +259,18 @@ class Client(object):
         :rtype: tuple
 
         """
-        authzr = self.auth_handler.get_authorizations(
-                domains,
-                self.config.allow_subset_of_names)
+        try:
+            authzr = self.auth_handler.get_authorizations(
+                    domains,
+                    self.config.allow_subset_of_names)
+        except errors.Error as error:
+            if error.typ == "urn:acme:error:rateLimited":
+                if self.config.dry_run:
+                    # We convert this exception into a special one
+                    # that is reported differently.
+                    raise errors.DryRunAuthzRateLimited()
+            # We re-raise the original error.
+            raise
 
         domains = [a.body.identifier.value.encode('ascii')
                                           for a in authzr]

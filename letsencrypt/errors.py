@@ -94,3 +94,12 @@ class ConfigurationError(Error):
 
 class MissingCommandlineFlag(Error):
     """A command line argument was missing in noninteractive usage"""
+
+# Dry run rate limit errors to allow treating this event specially during
+# a dry run:
+
+class DryRunAuthzRateLimited(error):
+    """The server reported a rate limit on newauthz during a dry run."""
+
+class DryRunNewCertRateLimited(error):
+    """The server reported a rate limit on newcert during a dry run."""

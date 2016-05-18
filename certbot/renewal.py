@@ -34,6 +34,10 @@ STR_CONFIG_ITEMS = ["config_dir", "logs_dir", "work_dir", "user_agent",
                     "standalone_supported_challenges"]
 INT_CONFIG_ITEMS = ["rsa_key_size", "tls_sni_01_port", "http01_port"]
 
+# These are IInstaller / Security enhancement options that should be preserved
+# even if
+PRESERVE_ACROSS_CERTONLY_RENEWAL = ["autosec"]
+
 
 def renewal_conf_files(config):
     """Return /path/to/*.conf in the renewal conf directory"""
@@ -227,6 +231,17 @@ def _avoid_invalidating_lineage(config, lineage, original_server):
                     "a test certificate (domains: {0}). We will not do that "
                     "unless you use the --break-my-certs flag!".format(names))
 
+def bridge_config_variables(config):
+    """Handle the preservation of a few variables across certonly
+
+    A few IInstaller / security Enhancement variables might be written into a
+    renewal config during the "run" command; if the user subsequently renews
+    with "certonly", they should be preserved
+    """
+
+    for var in PRESERVE_ACROSS_CERTONLY_RENEWAL:
+        if var in renewal_params and not cli.set_by_cli(var):
+            setattr(config.namespace, var, renewal_params.get(var))
 
 def renew_cert(config, domains, le_client, lineage):
     "Renew a certificate lineage."

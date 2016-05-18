@@ -231,7 +231,7 @@ def _avoid_invalidating_lineage(config, lineage, original_server):
                     "a test certificate (domains: {0}). We will not do that "
                     "unless you use the --break-my-certs flag!".format(names))
 
-def bridge_config_variables(config):
+def bridge_config_variables(config, renewal_params):
     """Handle the preservation of a few variables across certonly
 
     A few IInstaller / security Enhancement variables might be written into a
@@ -248,6 +248,7 @@ def renew_cert(config, domains, le_client, lineage):
     renewal_params = lineage.configuration["renewalparams"]
     original_server = renewal_params.get("server", cli.flag_default("server"))
     _avoid_invalidating_lineage(config, lineage, original_server)
+    bridge_config_variables(config, renewal_params)
     new_certr, new_chain, new_key, _ = le_client.obtain_certificate(domains)
     if config.dry_run:
         logger.info("Dry run: skipping updating lineage at %s",

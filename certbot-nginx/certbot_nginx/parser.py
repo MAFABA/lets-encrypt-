@@ -513,7 +513,7 @@ def _inherit_indentation(block, location, new_directive):
     if location > 1 and isinstance(block[location - 1], list):
         indent = block[location - 1][0]
         if nginxparser.spacey(indent):
-            directive.spaced[0] = indent
+            new_directive.spaced[0] = indent
 
 
 def _add_directive(block, directive, replace):

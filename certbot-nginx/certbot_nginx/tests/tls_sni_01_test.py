@@ -117,6 +117,8 @@ class TlsSniPerformTest(util.NginxTest):
             self.assertEqual(sni_responses[i], acme_responses[i])
 
     def test_mod_config(self):
+        from certbot_nginx import tls_sni_01
+        tls_sni_01.debug = True
         self.sni.add_chall(self.achalls[0])
         self.sni.add_chall(self.achalls[2])
 

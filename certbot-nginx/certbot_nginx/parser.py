@@ -8,8 +8,8 @@ import re
 
 from certbot import errors
 
-from certbot_nginx import obj
 from certbot_nginx import nginxparser
+from certbot_nginx import obj
 
 
 logger = logging.getLogger(__name__)
@@ -507,13 +507,23 @@ def _add_directives(block, directives, replace):
 
 repeatable_directives = set(['server_name', 'listen', 'include'])
 
+def _inherit_indentation(block, location, new_directive):
+    "Tweaks indentation of new_directive to try to match context"
+
+    if location > 1 and isinstance(block[location - 1], list):
+        indent = block[location - 1][0]
+        if nginxparser.spacey(indent):
+            directive.spaced[0] = indent
+
+
 def _add_directive(block, directive, replace):
     """Adds or replaces a single directive in a config block.
 
     See _add_directives for more documentation.
 
     """
-    directive = nginxparser.UnspacedList(directive)
+    if not isinstance(directive, nginxparser.UnspacedList):
+        directive = nginxparser.UnspacedList(directive, spaceout=True)
     if len(directive) == 0:
         # whitespace
         block.append(directive)
@@ -525,6 +535,7 @@ def _add_directive(block, directive, replace):
         if len(line) > 0 and line[0] == directive[0]:
             location = index
             break
+    _inherit_indentation(block, location, directive)
     if replace:
         if location == -1:
             raise errors.MisconfigurationError(

@@ -142,6 +142,7 @@ def dumps(blocks):
     return str(RawNginxDumper(blocks.spaced))
 
 
+
 def dump(blocks, _file):
     """Dump to a file.
 
@@ -153,22 +154,26 @@ def dump(blocks, _file):
     """
     return _file.write(dumps(blocks))
 
-
 spacey = lambda x: (isinstance(x, str) and x.isspace()) or x == ''
 
 class UnspacedList(list):
     """Wrap a list [of lists], making any whitespace entries magically invisible"""
 
-    def __init__(self, list_source):
+    def __init__(self, list_source, spaceout=False):
         # ensure our argument is not a generator, and duplicate any sublists
         self.spaced = copy.deepcopy(list(list_source))
+        # add appropriate whitespace when constructing new directives
+        if spaceout and all([isinstance(entry, str) for entry in self.spaced]):
+            first, rest = self.spaced[:1], self.spaced[1:]
+            self.spaced = reduce(lambda x, y: x + [" ", y], rest, first)
+            self.spaced.insert(0, "\n")
 
         # Turn self into a version of the source list that has spaces removed
         # and all sub-lists also UnspacedList()ed
         list.__init__(self, list_source)
         for i, entry in reversed(list(enumerate(self))):
             if isinstance(entry, list):
-                sublist = UnspacedList(entry)
+                sublist = UnspacedList(entry, spaceout)
                 if sublist != [] or sublist.spaced == []:
                     list.__setitem__(self, i, sublist)
                 else:
@@ -181,11 +186,12 @@ class UnspacedList(list):
                 if "#" not in self[:i]:
                     list.__delitem__(self, i)
 
-    def _coerce(self, inbound):
+    def _coerce(self, inbound, spaceout=False):
         """
         Coerce some inbound object to be appropriately usable in this object
 
         :param inbound: string or None or list or UnspacedList
+        :param bool spaceout: whether to add whitespaces to the inbound list
         :returns: (coerced UnspacedList or string or None, spaced equivalent)
         :rtype: tuple
 
@@ -194,22 +200,22 @@ class UnspacedList(list):
             return (inbound, inbound)
         else:
             if not hasattr(inbound, "spaced"):
-                inbound = UnspacedList(inbound)
+                inbound = UnspacedList(inbound, spaceout)
             return (inbound, inbound.spaced)
 
 
-    def insert(self, i, x):
-        item, spaced_item = self._coerce(x)
+    def insert(self, i, x, spaceout=False):
+        item, spaced_item = self._coerce(x, spaceout)
         self.spaced.insert(i + self._spaces_before(i), spaced_item)
         list.insert(self, i, item)
 
-    def append(self, x):
-        item, spaced_item = self._coerce(x)
+    def append(self, x, spaceout=False):
+        item, spaced_item = self._coerce(x, spaceout)
         self.spaced.append(spaced_item)
         list.append(self, item)
 
-    def extend(self, x):
-        item, spaced_item = self._coerce(x)
+    def extend(self, x, spaceout=False):
+        item, spaced_item = self._coerce(x, spaceout)
         self.spaced.extend(spaced_item)
         list.extend(self, item)
 

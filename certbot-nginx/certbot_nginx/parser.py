@@ -536,6 +536,7 @@ def _add_directive(block, directive, replace):
             location = index
             break
     _inherit_indentation(block, location, directive)
+
     if replace:
         if location == -1:
             raise errors.MisconfigurationError(

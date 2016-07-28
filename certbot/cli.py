@@ -394,6 +394,17 @@ class HelpfulArgumentParser(object):
                         " {0} conflicts with dialog_mode").format(arg)
                     )
 
+        if self.verb != "renew":
+            if len(parsed_args.lineages) > 1:
+                raise errors.Error("Only one lineage may be specified with "
+                                   "--lineage when performing an action other "
+                                   "than 'renew'.")
+
+        if self.verb == "renew":
+            if len(parsed_args.domains) > 0 and len(parsed_args.lineages) > 0:
+                raise errors.Error("Domains or lineages, but not both, may "
+                                   "be specified with the action 'renew'.")
+
         if parsed_args.validate_hooks:
             hooks.validate_hooks(parsed_args)
 
@@ -679,6 +690,9 @@ def prepare_and_parse_args(plugins, args, detect_defaults=False):  # pylint: dis
                 help="Domain names to apply. For multiple domains you can use "
                 "multiple -d flags or enter a comma separated list of domains "
                 "as a parameter.")
+    helpful.add(None, "-l", "--lineage", dest="lineages", action=_LineagesAction,
+                default=[], help="Lineage config file(s) describing existing "
+                "certificate lineage(s) to be updated by this operation.")
     helpful.add_group(
         "automation",
         description="Arguments for automating execution & other tweaks")
@@ -1012,3 +1026,9 @@ def add_domains(args_or_config, domains):
             args_or_config.domains.append(domain)
 
     return validated_domains
+
+
+class _LineagesAction(argparse.Action):
+    """Action class for parsing lineages."""
+    def __call__(self, parser, namespace, value, option_string=None):
+        namespace.lineages.extend(value.split(","))

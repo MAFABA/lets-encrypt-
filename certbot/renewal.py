@@ -313,12 +313,34 @@ def renew_all_lineages(config):
                            "renew specific certificates, use the certonly "
                            "command. The renew verb may provide other options "
                            "for selecting certificates to renew in the future.")
+    # TODO: Change the error above to mention that you can now
+    #       specify lineages for renewal via --lineage.
     renewer_config = configuration.RenewerConfiguration(config)
     renew_successes = []
     renew_failures = []
     renew_skipped = []
     parse_failures = []
-    for renewal_file in renewal_conf_files(renewer_config):
+
+    if len(config.lineages) > 0:
+        all_renewal_configs = []
+        for lineage in config.lineages:
+            try:
+                # _resolve_lineage returns a tuple whose second element is
+                # the corrected file path.  This allows specifying, for
+                # example, --lineage example.org instead of
+                #          --lineage /etc/letsencrypt/renewal/example.org.conf
+                # The corrected file path will be the explicit path of the
+                # renewal config file.
+                all_renewal_configs.append(_resolve_lineage(config, lineage)[1])
+            except errors.Error:
+                # We'll simply put this one back into the queue as-is, allowing
+                # it to trigger the error later on in the renewal loop, to
+                # enable deferred reporting of the error condition.
+                all_renewal_configs.append(lineage)
+    else:
+        all_renewal_configs = renewal_conf_files(renewer_config)
+
+    for renewal_file in all_renewal_configs:
         disp = zope.component.getUtility(interfaces.IDisplay)
         disp.notification("Processing " + renewal_file, pause=False)
         lineage_config = copy.deepcopy(config)
@@ -327,6 +349,13 @@ def renew_all_lineages(config):
         # elements from within the renewal configuration file).
         try:
             renewal_candidate = _reconstitute(lineage_config, renewal_file)
+            # If specific domains are specified, we can skip renewing any
+            # certificate that does not currently contain one or more of
+            # them.  If no domains are specified, we attempt to renew every
+            # certificate.
+            if len(config.domains) > 0:
+                if len(set(config.domains).intersection(set(renewal_candidate.names()))) == 0:
+                    continue
         except Exception as e:  # pylint: disable=broad-except
             logger.warning("Renewal configuration file %s produced an "
                            "unexpected error: %s. Skipping.", renewal_file, e)

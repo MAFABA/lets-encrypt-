@@ -278,6 +278,22 @@ def _find_domains(config, installer):
     return domains
 
 
+def _resolve_lineage(lineage_name, cli_config):
+    """Try to find a certificate lineage that could be referred to by this name."""
+    # We'll look in lineage_name, /etc/letsencrypt/lineage_name, and
+    # /etc/letsencrypt/lineage_name.conf
+    for renewal_file in (lineage_name, os.path.join(cli_config.renewal_configs_dir,
+                         lineage_name), os.path.join(cli_config.renewal_configs_dir,
+                         lineage_name + ".conf")):
+        try:
+            candidate_lineage = storage.RenewableCert(renewal_file, cli_config)
+            return candidate_lineage
+        except (errors.CertStorageError, IOError):
+            pass
+    raise errors.Error("The requested lineage {0} did not correspond to "
+                       "an identifiable available lineage.")
+
+
 def _report_new_cert(config, cert_path, fullchain_path):
     """Reports the creation of a new certificate to the user.
 
@@ -549,6 +565,9 @@ def obtain_cert(config, plugins, lineage=None):
 
     This implements the 'certonly' subcommand, and is also called from within the
     'renew' command."""
+
+    print(config.lineages)
+    ajdslksadsakjdlhsalkjhdsakjsalhd
 
     # SETUP: Select plugins and construct a client instance
     try:

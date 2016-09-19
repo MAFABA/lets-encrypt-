@@ -153,7 +153,6 @@ class NginxConfigurator(common.Plugin):
                 "The nginx plugin currently requires --fullchain-path to "
                 "install a cert.")
 
-        vhost = self.choose_vhost(domain)
         cert_directives = [['\n', 'ssl_certificate', ' ', fullchain_path],
                            ['\n', 'ssl_certificate_key', ' ', key_path]]
 
@@ -172,13 +171,27 @@ class NginxConfigurator(common.Plugin):
                 "Online Certificate Status Protocol (OCSP) stapling "
                 "on nginx >= 1.3.7.")
 
-        try:
+        def add_all_server_directives(vhost):
             self.parser.add_server_directives(vhost.filep, vhost.names,
                                               cert_directives, replace=True)
             self.parser.add_server_directives(vhost.filep, vhost.names,
                                               stapling_directives, replace=False)
             logger.info("Deployed Certificate to VirtualHost %s for %s",
                         vhost.filep, vhost.names)
+
+        try:
+            all_matches = self._get_all_matches(domain)
+            ssl_matches = self._get_ssl_matches(all_matches)
+            if len(ssl_matches) > 0:
+                for vhost in ssl_matches:
+                    add_all_server_directives(vhost)
+            elif len(all_matches) > 0:
+                for vhost in all_matches:
+                    add_all_server_directives(vhost)
+            else:
+                raise errors.MisconfigurationError("No VirtualHosts found "
+                    "matching domain %s", domain)
+            
         except errors.MisconfigurationError as error:
             logger.debug(error)
             logger.warning(
@@ -244,6 +257,13 @@ class NginxConfigurator(common.Plugin):
                 self._make_server_ssl(vhost)
 
         return vhost
+
+    def _get_ssl_matches(self, all_matches):
+        return filter(all_matches, lambda x: x.ssl)
+
+    def _get_all_matches(self, target_name):
+        all_ranked_matches = self._get_ranked_matches(target_name)
+        return map(all_ranked_matches, lambda x: x['vhost'])
 
     def _get_ranked_matches(self, target_name):
         """Returns a ranked list of vhosts that match target_name.

@@ -240,7 +240,7 @@ class NginxParser(object):
             except IOError:
                 logger.error("Could not open file for writing: %s", filename)
 
-    def _has_server_names(self, entry, names):
+    def _is_matching_block(self, entry, target_name, ssl_only, plaintext_only):
         """Checks if a server block has the given set of server_names. This
         is the primary way of identifying server blocks in the configurator.
         Returns false if 'entry' doesn't look like a server block at all.
@@ -250,6 +250,8 @@ class NginxParser(object):
 
         :param list entry: The block to search
         :param set names: The names to match
+        :param bool ssl_only: True if only ssl-enabled blocks should match
+        :param bool plaintext_only: True if only ssl-disabled blocks should match
         :rtype: bool
 
         """
@@ -261,21 +263,17 @@ class NginxParser(object):
             # Can't be a server block
             return False
 
-        new_entry = self._get_included_directives(entry)
-        server_names = set()
-        for item in new_entry:
-            if not isinstance(item, list):
-                # Can't be a server block
-                return False
+        parsed_server = parse_server(entry)
 
-            if len(item) > 0 and item[0] == 'server_name':
-                server_names.update(_get_servernames(item[1]))
+        if ssl_only and not parsed_server['ssl']:
+            return False
+        if plaintext_only and parsed_server['ssl']:
+            return False
+        return name_matches_vhost_names(parsed_server['names'], target_name)
 
-        return server_names == names
-
-    def add_server_directives(self, filename, names, directives,
-                              replace):
-        """Add or replace directives in the first server block with names.
+    def add_server_directives(self, target_name, directives,
+                              replace, ssl_only=False, plaintext_only=False):
+        """Add or replace directives to all server blocks matching target_name
 
         ..note :: If replace is True, this raises a misconfiguration error
         if the directive does not already exist.
@@ -292,8 +290,9 @@ class NginxParser(object):
 
         """
         try:
-            _do_for_subarray(self.parsed[filename],
-                             lambda x: self._has_server_names(x, names),
+            _do_for_subarray(self.parser.loc["root"],
+                             lambda x: self._is_matching_block(x, target_name,
+                                ssl_only, plaintext_only),
                              lambda x: _add_directives(x, directives, replace))
         except errors.MisconfigurationError as err:
             raise errors.MisconfigurationError("Problem in %s: %s" % (filename, err.message))
@@ -357,6 +356,27 @@ def _do_for_subarray(entry, condition, func):
             for item in entry:
                 _do_for_subarray(item, condition, func)
 
+def name_matches_vhost(names, target_name):
+    """Finds the best match for target_name out of names using the Nginx
+    name-matching rules (exact > longest wildcard starting with * >
+    longest wildcard ending with * > regex).
+
+    :param str target_name: The name to match
+    :param set names: The candidate server names
+    :returns: Tuple of (type of match, the name that matched)
+    :rtype: bool
+
+    """
+    for name in names:
+        if _exact_match(target_name, name):
+            return True
+        elif _wildcard_match(target_name, name, True):
+            return True
+        elif _wildcard_match(target_name, name, False):
+            return True
+        elif _regex_match(target_name, name):
+            return True
+    return False
 
 def get_best_match(target_name, names):
     """Finds the best match for target_name out of names using the Nginx
@@ -518,6 +538,7 @@ def _add_directives(block, directives, replace):
     :param list directives: The new directives.
 
     """
+    print block
     for directive in directives:
         _add_directive(block, directive, replace)
     if block and '\n' not in block[-1]:  # could be "   \n  " or ["\n"] !

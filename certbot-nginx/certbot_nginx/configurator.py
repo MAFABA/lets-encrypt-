@@ -153,7 +153,6 @@ class NginxConfigurator(common.Plugin):
                 "The nginx plugin currently requires --fullchain-path to "
                 "install a cert.")
 
-        vhost = self.choose_vhost(domain)
         cert_directives = [['\n', 'ssl_certificate', ' ', fullchain_path],
                            ['\n', 'ssl_certificate_key', ' ', key_path]]
 
@@ -172,24 +171,33 @@ class NginxConfigurator(common.Plugin):
                 "Online Certificate Status Protocol (OCSP) stapling "
                 "on nginx >= 1.3.7.")
 
+        # Check that there are matching sslish blocks. If there aren't, make all
+        # matching plaintextish blocks sslish. If no matching blocks, raise an error.
+        self.ensure_matching_sslish_blocks(domain)
+        
         try:
-            self.parser.add_server_directives(vhost.filep, vhost.names,
-                                              cert_directives, replace=True)
-            self.parser.add_server_directives(vhost.filep, vhost.names,
-                                              stapling_directives, replace=False)
-            logger.info("Deployed Certificate to VirtualHost %s for %s",
-                        vhost.filep, vhost.names)
+            # add cert info to all matching sslish blocks, which we are now
+            # guaranteed to have.
+            self.parser.add_server_directives(domain,
+                                              cert_directives, replace=True,
+                                              ssl_only=True)
+            self.parser.add_server_directives(domain,
+                                              stapling_directives, replace=False,
+                                              ssl_only=True)
+            logger.info("Deployed Certificate to VirtualHosts for %s",
+                        domain)
         except errors.MisconfigurationError as error:
             logger.debug(error)
             logger.warning(
-                "Cannot find a cert or key directive in %s for %s. "
-                "VirtualHost was not modified.", vhost.filep, vhost.names)
-            # Presumably break here so that the virtualhost is not modified
-            return False
+                "Cannot find a cert or key directive for %s. "
+                "VirtualHost was not modified.", domain)
+            # Break here so that the virtualhost is not modified.
+            # Raise the error so we don't ask for enhancements.
+            raise error
 
-        self.save_notes += ("Changed vhost at %s with addresses of %s\n" %
-                            (vhost.filep,
-                             ", ".join(str(addr) for addr in vhost.addrs)))
+        # self.save_notes += ("Changed vhost at %s with addresses of %s\n" %
+        #                     (vhost.filep,
+        #                      ", ".join(str(addr) for addr in vhost.addrs)))
         self.save_notes += "\tssl_certificate %s\n" % fullchain_path
         self.save_notes += "\tssl_certificate_key %s\n" % key_path
         if len(stapling_directives) > 0:
@@ -202,7 +210,7 @@ class NginxConfigurator(common.Plugin):
     #######################
     # Vhost parsing methods
     #######################
-    def choose_vhost(self, target_name):
+    def ensure_matching_sslish_blocks(self, target_name):
         """Chooses a virtual host based on the given domain name.
 
         .. note:: This makes the vhost SSL-enabled if it isn't already. Follows
@@ -219,31 +227,24 @@ class NginxConfigurator(common.Plugin):
 
         :returns: ssl vhost associated with name
         :rtype: :class:`~certbot_nginx.obj.VirtualHost`
+        :raises .errors.MisconfigurationError: If no vhost matches target_name
 
         """
-        vhost = None
 
-        matches = self._get_ranked_matches(target_name)
-        if not matches:
-            # No matches. Create a new vhost with this name in nginx.conf.
-            filep = self.parser.loc["root"]
-            new_block = [['server'], [['\n', 'server_name', ' ', target_name]]]
-            self.parser.add_http_directives(filep, new_block)
-            vhost = obj.VirtualHost(filep, set([]), False, True,
-                                    set([target_name]), list(new_block[1]))
-        elif matches[0]['rank'] in xrange(2, 6):
-            # Wildcard match - need to find the longest one
-            rank = matches[0]['rank']
-            wildcards = [x for x in matches if x['rank'] == rank]
-            vhost = max(wildcards, key=lambda x: len(x['name']))['vhost']
-        else:
-            vhost = matches[0]['vhost']
+        # Check that there are matching sslish blocks. If there aren't, make all
+        # matching plaintextish blocks sslish. If no matching blocks, raise an error.
+        
 
-        if vhost is not None:
-            if not vhost.ssl:
-                self._make_server_ssl(vhost)
-
-        return vhost
+        all_matching_vhosts = map(self.parser.get_vhosts(),
+            self.parser.name_matches_vhost_names(vhost.names, target_name))
+        if not all_matching_vhosts:
+            # No name matches. Raise a misconfiguration error.
+            raise errors.MisconfigurationError(
+                "Cannot find a VirtualHost matching domain %s." % (target_name))
+        
+        ssl_matching_vhosts = filter(lambda x: x.ssl, all_matching_vhosts)
+        if len(ssl_matching_vhosts) == 0:
+            self._make_servers_ssl(target_name)
 
     def _get_ranked_matches(self, target_name):
         """Returns a ranked list of vhosts that match target_name.
@@ -325,7 +326,7 @@ class NginxConfigurator(common.Plugin):
             cert_file.write(cert_pem)
         return cert_path, le_key.file
 
-    def _make_server_ssl(self, vhost):
+    def _make_servers_ssl(self, domain):
         """Make a server SSL.
 
         Make a server SSL based on server_name and filename by adding a
@@ -349,12 +350,7 @@ class NginxConfigurator(common.Plugin):
              ['\n']] +
             self.parser.loc["ssl_options"])
 
-        self.parser.add_server_directives(
-            vhost.filep, vhost.names, ssl_block, replace=False)
-        vhost.ssl = True
-        vhost.raw.extend(ssl_block)
-        vhost.addrs.add(obj.Addr(
-            '', str(self.config.tls_sni_01_port), True, False))
+        self.parser.add_server_directives(domain, ssl_block, replace=False)
 
     def get_all_certs_keys(self):
         """Find all existing keys, certs from configuration.

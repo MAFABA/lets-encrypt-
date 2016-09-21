@@ -88,7 +88,7 @@ class NginxConfiguratorTest(util.NginxTest):
         mock_vhost = obj.VirtualHost(filep,
                                      None, None, None,
                                      set(['.example.com', 'example.*']),
-                                     None)
+                                     None, [0])
         self.config.parser.add_server_directives(
             mock_vhost,
             [['listen', ' ', '5001 ssl']],
@@ -141,7 +141,8 @@ class NginxConfiguratorTest(util.NginxTest):
             self.assertEqual(conf_path[name], path)
 
         for name in bad_results:
-            self.assertEqual(set([name]), self.config.choose_vhost(name).names)
+            self.assertRaises(errors.MisconfigurationError,
+                              self.config.choose_vhost, name)
 
     def test_more_info(self):
         self.assertTrue('nginx.conf' in self.config.more_info())

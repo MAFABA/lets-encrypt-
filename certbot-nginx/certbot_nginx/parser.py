@@ -41,6 +41,9 @@ class NginxParser(object):
         self.parsed = {}
         self._parse_recursively(self.loc["root"])
 
+        root_list = self.parsed[self.loc["root"]]
+        self.parsed_tree = self._create_tree_from_list(root_list)
+
     def _parse_recursively(self, filepath):
         """Parses nginx config files recursively by looking at 'include'
         directives inside 'http' and 'server' blocks. Note that this only
@@ -52,21 +55,51 @@ class NginxParser(object):
         filepath = self.abs_path(filepath)
         trees = self._parse_files(filepath)
         for tree in trees:
-            for entry in tree:
+            for index in range(0, len(tree)):
+                entry = tree[index]
                 if _is_include_directive(entry):
                     # Parse the top-level included file
                     self._parse_recursively(entry[1])
                 elif entry[0] == ['http'] or entry[0] == ['server']:
                     # Look for includes in the top-level 'http'/'server' context
-                    for subentry in entry[1]:
+                    for subindex in range(0, len(entry[1])):
+                        subentry = entry[1][subindex]
                         if _is_include_directive(subentry):
                             self._parse_recursively(subentry[1])
                         elif entry[0] == ['http'] and subentry[0] == ['server']:
                             # Look for includes in a 'server' context within
                             # an 'http' context
-                            for server_entry in subentry[1]:
+                            for server_index in range(0, len(subentry[1])):
+                                server_entry = subentry[1][server_index]
                                 if _is_include_directive(server_entry):
                                     self._parse_recursively(server_entry[1])
+
+    def _create_tree_from_list(self, entry):
+        """Parses nginx config files recursively by looking at 'include'
+        directives inside 'http' and 'server' blocks. Note that this only
+        reads Nginx files that potentially declare a virtual host.
+
+        :param str filepath: The path to the files to parse, as a glob
+
+        """
+        if len(entry) == 0:
+            return []
+        elif _is_include_directive(entry):
+            filepath = self.abs_path(entry[1])
+            filenames = self._expand_filepath(filepath)
+            # we assume that the relevant filename will already be in self.parsed
+            file_trees = [list(self.parsed[key]) for key in self.parsed if key in filenames]
+            flattened_trees = [item for sublist in file_trees for item in sublist]
+            tree = self._create_tree_from_list(flattened_trees)
+            return tree
+        elif _is_simple_directive(entry):
+            return [ entry ]
+        elif _is_block_directive(entry):
+            tree = [ [entry[0], self._create_tree_from_list(entry[1])] ]
+            return tree
+        else:
+            tree = self._create_tree_from_list(entry[0]) + self._create_tree_from_list(entry[1:])
+            return tree
 
     def abs_path(self, path):
         """Converts a relative path to an absolute path relative to the root.
@@ -146,6 +179,11 @@ class NginxParser(object):
                         pass
         return result
 
+    def _expand_filepath(self, filepath):
+        return glob.glob(filepath) # nginx on unix calls glob(3) for this
+                                    # XXX Windows nginx uses FindFirstFile, and
+                                    # should have a narrower call here
+
     def _parse_files(self, filepath, override=False):
         """Parse files from a glob
 
@@ -155,9 +193,7 @@ class NginxParser(object):
         :rtype: list
 
         """
-        files = glob.glob(filepath) # nginx on unix calls glob(3) for this
-                                    # XXX Windows nginx uses FindFirstFile, and
-                                    # should have a narrower call here
+        files = self._expand_filepath(filepath)
         trees = []
         for item in files:
             if item in self.parsed and not override:
@@ -240,7 +276,32 @@ class NginxParser(object):
             except IOError:
                 logger.error("Could not open file for writing: %s", filename)
 
+<<<<<<< e0d58a0f8db45b1c0b665ba4aa48143404229a01
     def _is_matching_block(self, entry, target_name, ssl_only, plaintext_only):
+=======
+    def name_matches_vhost_names(self, names, target_name):
+        """Finds the best match for target_name out of names using the Nginx
+        name-matching rules (exact > longest wildcard starting with * >
+        longest wildcard ending with * > regex).
+
+        :param str target_name: The name to match
+        :param set names: The candidate server names
+        :returns: Tuple of (type of match, the name that matched)
+        :rtype: bool
+
+        """
+        for name in names:
+            if _exact_match(target_name, name):
+                return True
+            elif _wildcard_match(target_name, name, True):
+                return True
+            elif _wildcard_match(target_name, name, False):
+                return True
+            elif _regex_match(target_name, name):
+                return True
+        return False
+
+    def _is_matching_block(self, entry, target_entry, ssl_only, plaintext_only):
         """Checks if a server block has the given set of server_names. This
         is the primary way of identifying server blocks in the configurator.
         Returns false if 'entry' doesn't look like a server block at all.
@@ -255,21 +316,36 @@ class NginxParser(object):
         :rtype: bool
 
         """
-        if len(names) == 0:
+        if len(target_name) == 0:
             # Nothing to identify blocks with
             return False
 
-        if not isinstance(entry, list):
-            # Can't be a server block
-            return False
 
-        parsed_server = parse_server(entry)
+        new_entry = self._get_included_directives(entry)
+        for item in new_entry:
+            if not isinstance(item, list):
+                # Can't be a server block
+                return False
+
+        parsed_server = parse_server(new_entry)
 
         if ssl_only and not parsed_server['ssl']:
             return False
         if plaintext_only and parsed_server['ssl']:
             return False
-        return name_matches_vhost_names(parsed_server['names'], target_name)
+        out = self.name_matches_vhost_names(parsed_server['names'], target_name)
+        return out
+
+    # Exposed for testing
+    def add_server_directives_filep(self, filep, target_vhost, directives,
+                                    replace, ssl_only=False, plaintext_only=False):
+        try:
+            _do_for_subarray(self.parsed[filep],
+                             lambda x: self._is_matching_block(x, target_vhost,
+                                ssl_only, plaintext_only),
+                             lambda x: _add_directives(x, directives, replace))
+        except errors.MisconfigurationError as err:
+            raise errors.MisconfigurationError("Problem in %s: %s" % (filep, err.message))
 
     def add_server_directives(self, target_name, directives,
                               replace, ssl_only=False, plaintext_only=False):
@@ -289,13 +365,10 @@ class NginxParser(object):
         :param bool replace: Whether to only replace existing directives
 
         """
-        try:
-            _do_for_subarray(self.parser.loc["root"],
-                             lambda x: self._is_matching_block(x, target_name,
-                                ssl_only, plaintext_only),
-                             lambda x: _add_directives(x, directives, replace))
-        except errors.MisconfigurationError as err:
-            raise errors.MisconfigurationError("Problem in %s: %s" % (filename, err.message))
+        for filep in self.parsed:
+            self.add_server_directives_filep(filep, target_name, directives,
+                                             replace, ssl_only, plaintext_only)
+        
 
     def add_http_directives(self, filename, directives):
         """Adds directives to the first encountered HTTP block in filename.
@@ -469,6 +542,18 @@ def _regex_match(target_name, name):
         # perl-compatible regexes are sometimes not recognized by python
         return False
 
+def _is_simple_directive(entry):
+    """Checks if an nginx parsed entry is a 'simple' directive.
+    
+    :param list entry: the parsed entry
+    :returns: Whether it's a 'simple' directive
+    :rtype: bool
+
+    """
+    return (isinstance(entry, list) and len(entry) == 2 and
+            isinstance(entry[0], str) and
+            isinstance(entry[1], str))
+
 
 def _is_include_directive(entry):
     """Checks if an nginx parsed entry is an 'include' directive.
@@ -478,10 +563,23 @@ def _is_include_directive(entry):
     :rtype: bool
 
     """
-    return (isinstance(entry, list) and
-            len(entry) == 2 and entry[0] == 'include' and
-            isinstance(entry[1], str))
+    return (_is_simple_directive(entry) and
+            entry[0] == 'include')
 
+def _is_block_directive(entry):
+    """Checks if an nginx parsed entry is a block directive.
+
+    :param list entry: the parsed entry
+    :returns: Whether it's a 'block' directive
+    :rtype: bool
+
+    """
+    return (not _is_simple_directive(entry) and
+            len(entry) == 2 and
+            isinstance(entry[0], list) and
+            len(entry[0]) % 2 != 0 and
+            len(entry[0]) >= 1 and
+            isinstance(entry[0][0], str))
 
 def _get_servernames(names):
     """Turns a server_name string into a list of server names

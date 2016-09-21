@@ -235,8 +235,9 @@ class NginxConfigurator(common.Plugin):
         # matching plaintextish blocks sslish. If no matching blocks, raise an error.
         
 
-        all_matching_vhosts = map(self.parser.get_vhosts(),
-            self.parser.name_matches_vhost_names(vhost.names, target_name))
+        all_matching_vhosts = filter(
+            lambda vhost: self.parser.name_matches_vhost_names(vhost.names, target_name),
+            self.parser.get_vhosts())
         if not all_matching_vhosts:
             # No name matches. Raise a misconfiguration error.
             raise errors.MisconfigurationError(
@@ -244,7 +245,8 @@ class NginxConfigurator(common.Plugin):
         
         ssl_matching_vhosts = filter(lambda x: x.ssl, all_matching_vhosts)
         if len(ssl_matching_vhosts) == 0:
-            self._make_servers_ssl(target_name)
+            for vhost in all_matching_vhosts:
+                self._make_server_ssl(vhost)
 
     def _get_ranked_matches(self, target_name):
         """Returns a ranked list of vhosts that match target_name.
@@ -326,7 +328,7 @@ class NginxConfigurator(common.Plugin):
             cert_file.write(cert_pem)
         return cert_path, le_key.file
 
-    def _make_servers_ssl(self, domain):
+    def _make_server_ssl(self, vhosts):
         """Make a server SSL.
 
         Make a server SSL based on server_name and filename by adding a
@@ -349,7 +351,6 @@ class NginxConfigurator(common.Plugin):
              ['\n    ', 'ssl_certificate_key', ' ', snakeoil_key],
              ['\n']] +
             self.parser.loc["ssl_options"])
-
         self.parser.add_server_directives(domain, ssl_block, replace=False)
 
     def get_all_certs_keys(self):

@@ -103,8 +103,10 @@ def choose_names(installer):
     names = get_valid_domains(domains)
 
     if not names:
-        return _choose_names_manually(
-            "No names were found in your configuration files. ")
+        prefix = ["No names were found in your", "configuration files. "]
+        if hasattr(installer, "name") and isinstance(installer.name, str):
+            prefix.insert(1, installer.name)
+        return _choose_names_manually(" ".join(prefix))
 
     code, names = _filter_names(names)
     if code == display_util.OK and names:

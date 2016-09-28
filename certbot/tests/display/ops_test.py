@@ -203,17 +203,26 @@ class ChooseNamesTest(unittest.TestCase):
         mock_util().input.return_value = (display_util.CANCEL, [])
         self.assertEqual(self._call(None), [])
 
-    @mock.patch("certbot.display.ops.z_util")
-    def test_no_names_choose(self, mock_util):
-        self.mock_install().get_all_names.return_value = set()
-        domain = "example.com"
-        mock_util().input.return_value = (display_util.OK, domain)
+    def test_no_domains_with_installer_name(self):
+        self.mock_install.name = "Turing complete"
+        self._test_no_domains_helper(
+            "your {0} configuration files".format(self.mock_install.name))
 
-        actual_doms = self._call(self.mock_install)
+    def test_no_domains_without_installer_name(self):
+        self._test_no_domains_helper("your configuration files")
+
+    def _test_no_domains_helper(self, expected_substring):
+        domain = "example.com"
+        self.mock_install.get_all_names.return_value = set()
+
+        with mock.patch("certbot.display.ops.z_util") as mock_util:
+            mock_util().input.return_value = (display_util.OK, domain)
+            actual_doms = self._call(self.mock_install)
+
         self.assertEqual(mock_util().input.call_count, 1)
         self.assertEqual(actual_doms, [domain])
         self.assertTrue(
-            "configuration files" in mock_util().input.call_args[0][0])
+            expected_substring in mock_util().input.call_args[0][0])
 
     @mock.patch("certbot.display.ops.z_util")
     def test_filter_names_valid_return(self, mock_util):

@@ -60,13 +60,17 @@ CheckCertCount() {
 
 CheckCertCount 1
 # This won't renew (because it's not time yet)
-common_no_force_renew renew
+OUT=`common_no_force_renew renew --quiet 2>&1`
+if [ "$OUT" != "" ] ; then
+    echo Renew --quiet produced non-empty output: "$OUT"
+    exit 1
+fi
 CheckCertCount 1
 
 # --renew-by-default is used, so renewal should occur
 OUT=`common renew --quiet -vvv 2>&1`
 if [ "$OUT" != "" ] ; then
-    echo Renew --quiet -vvv produced non-empty output: "$OUT"
+    echo Renew --quiet -vvv --force-renew produced non-empty output: "$OUT"
     exit 1
 fi
 CheckCertCount 2

@@ -64,7 +64,11 @@ common_no_force_renew renew
 CheckCertCount 1
 
 # --renew-by-default is used, so renewal should occur
-common renew
+OUT=`common renew --quiet -vvv 2>&1`
+if [ "$OUT" != "" ] ; then
+    echo Renew --quiet -vvv produced non-empty output: "$OUT"
+    exit 1
+fi
 CheckCertCount 2
 
 # This will renew because the expiry is less than 10 years from now

@@ -59,24 +59,22 @@ CheckCertCount() {
 }
 
 CheckCertCount 1
+
+AssertCommandIsSilent() {
+    set +x
+    OUT=`$@ 2>&1`
+    set -x
+    if [ "$OUT" != "" ] ; then
+        echo $@ produced non-empty output: "$OUT"
+        exit 1
+    fi
+}
 # This won't renew (because it's not time yet)
-set +x
-OUT=`common_no_force_renew renew --quiet 2>&1`
-set -x
-if [ "$OUT" != "" ] ; then
-    echo Renew --quiet produced non-empty output: "$OUT"
-    exit 1
-fi
+AssertCommandIsSilent common_no_force_renew renew --quiet
 CheckCertCount 1
 
 # --renew-by-default is used, so renewal should occur
-set +x
-OUT=`common renew --quiet -vvv 2>&1`
-set -x
-if [ "$OUT" != "" ] ; then
-    echo Renew --quiet -vvv --force-renew produced non-empty output: "$OUT"
-    exit 1
-fi
+AssertCommandIsSilent common renew --quiet -vvv
 CheckCertCount 2
 
 # This will renew because the expiry is less than 10 years from now

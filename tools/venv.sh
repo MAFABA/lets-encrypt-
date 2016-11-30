@@ -1,7 +1,9 @@
 #!/bin/sh -xe
 # Developer virtualenv setup for Certbot client
 
-if command -v python2; then
+if [ -n "$CERTBOT_PYPY" ] ; then
+    export VENV_ARGS="--python $CERTBOT_PYPY"
+elif command -v python2; then
     export VENV_ARGS="--python python2"
 elif command -v python2.7; then
     export VENV_ARGS="--python python2.7"

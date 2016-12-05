@@ -7,10 +7,10 @@ from acme import challenges
 from acme import jose
 from acme import messages
 
-from certbot.tests import util
+from certbot.tests import test_util
 
 
-KEY = util.load_rsa_private_key('rsa512_key.pem')
+KEY = test_util.load_rsa_private_key('rsa512_key.pem')
 
 # Challenges
 HTTP01 = challenges.HTTP01(

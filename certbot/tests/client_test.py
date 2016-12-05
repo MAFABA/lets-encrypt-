@@ -13,7 +13,7 @@ from certbot import account
 from certbot import errors
 from certbot import util
 
-import certbot.tests.util as test_util
+from certbot.tests import test_util
 
 
 KEY = test_util.load_vector("rsa512_key.pem")

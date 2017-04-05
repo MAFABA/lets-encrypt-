@@ -80,6 +80,15 @@ CheckHooks() {
     rm "$HOOK_TEST"
 }
 
+CheckDomains() {
+    DOMAINS=`certbot certificates --cert-name $1 | grep "Domains" | cut -c 14-`
+    if [ "$DOMAINS" -ne "$2" ] ; then
+        echo Wrong domains, not "$2" \
+            `certbot certificates --cert-name $1 | grep "Domains" | cut -c 5-`
+        exit 1
+    fi
+}
+
 # We start a server listening on the port for the
 # unrequested challenge to prevent regressions in #3601.
 python -m SimpleHTTPServer $http_01_port &
@@ -106,6 +115,7 @@ common certonly -a manual -d le.wtf --rsa-key-size 4096 \
 
 common certonly -a manual -d dns.le.wtf --preferred-challenges dns,tls-sni \
     --manual-auth-hook ./tests/manual-dns-auth.sh
+CheckDomains "dns.le.wtf" "dns.le.wtf"
 
 common certonly --cert-name newname -d newname.le.wtf
 
